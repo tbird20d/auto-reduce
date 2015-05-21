@@ -1,0 +1,161 @@
+Here are some notes for auto-reduce.
+
+this functionality allows for easily eliminating individual fields,
+functions or features from the Linux kernel.
+
+The idea is that a new virtual configuration option allows a developer
+to disable an individual feature (such as support for user accounts),
+and have that be reflected at compile time by the elimination of
+all code and data related to that item.
+
+Differences between this approach and related approaches:
+ - automatic: this system should automatically find and eliminate the
+code, using toolchain assistance.  For example, the syntax analyzer is
+required to accurately identify the references to data items, and the
+C-preprocessor or compiler optimizer is required to eliminate the code
+automatically.
+ - cross-layer: this system should handle eliminating the code and data
+in both user-space (libraries and programs) and the kernel
+ - recursive: this system should do data dependency analysis, and program
+flow analysis, and support the creation of additional constraints that can
+be applied to the system.  (such as: this branch is never taken, so this
+result can never be returned.)  This is a form of "whole-program" optimization
+that is not available, even for the kernel, let alone multiple software layers.
+This data analysis is heavily related to consistency-checking.
+
+== features of the system ==
+DECLARING: expression of the constraint:
+ - not supporting users is equivalent to the code constraint "uid=0"
+ - need to express constaints in an easy-to-understand way
+   - need to convert to something that the analyzer, pre-processor, and
+ compiler can understand and use effectively
+
+FINDING: analysis: what code does the constraint affect?
+ - how to find accurate references to the constrained object, system-wide?
+   - may be differently named in different sections of code (can't just grep)
+   - may be copied anonymously
+   - may be referenced or accessed by a different name (alias)
+
+INJECTING: optimization: how to communicate the constraint to the optimizer
+ - how to eliminate code paths, or express dependent/generated constraints
+   - can I use the C-preprocessor (to add conditions via macros or #ifdefs)
+   - can I feed the optimizer some other way?
+
+== UID example ==
+Warning: this might be a toy example, but it is illustrative.
+(whether it is a toy example or not is a research project).
+
+If a system doesn't need user accounts, it can get rid of lots
+of uid=related data and code.  This includes not just the uid
+entry in the task structure, and the syscalls setuid() and getuid(),
+but also all related fields throughout the kernel.  It also
+includes all permissions checks related to uid.  This applies
+equally to library and program code as well.
+
+Postulate a system with 4 software components:
+ - kernel, glibc, busybox, lighttpd
+
+Problems:
+ - how to find uid references in the all software areas?
+   - can't just grep 
+   - must find all aliases
+     - need to model data flow and produce dependency graph?
+
+ - access to uid (or uid-returning functions) must be referentially
+	transparent (that is, have no side effects)
+ - generate other constraints from this constraint:
+    - examples:
+      - /etc/passwd not needed
+      - /etc/group not needed
+      - inode uids not needed
+      - syscall setuid() not needed
+      - syscall getuid() not needed
+
+
+== Research approach ==
+A) for the uid test case, do steps manually to:
+ 1) identify all references to the uid
+    - describe issues found while doing manual search
+    - see NOTES-uid.txt
+ 2) find other data and code dependent on uid
+    this does not need to be comprehensive
+ 3) generate new constraints on the dependent data
+ 4) write code to enforce the original constraint
+ 5) measure effect of constraint on code
+   - use bloat-o-meter
+
+B) 
+
+== Issues ==
+=== Searching for references ===
+ - uid is accessed via macros
+ - lots of things are called "uid" in the kernel
+   - grepping is unreliable
+ - there are lots of nested macros, with lots of side effects
+   - there are too many to trace manually
+     - is there a way to instrument the pre-processor, to output all references
+     to a macro?
+ - are there any cases of structure copying??
+   - e.g. real_cred to cred?  task -> new_task?
+   - can this be detected? - you would have to track pointers and their usage
+ - for manual searching, is there a way to reduce the search space
+   - identify source that is not used
+     - check .o files from  build, and ignore the .c if there's no .o?
+ - have to watch for transitions through both local and global variables
+   - examples: kernel/auditsc.c:__audit_signal_info:uid, kernel/audit.c:audit_sig_uid
+ - how to track state transitions (and initial values):
+   - e.g. audit_sig_uid can be -1, current->loginuid, or 0 (current_uid() after constraint application)
+   - loginuid is initialized to -1, and changed to 0 later
+     - how to make -1 go away?
+        - don't know how - it indicates that loginuid was never set (it has
+		actual meaning that might be used)
+	
+	- if loginuid or audit_sig_uid is never referenced from user space,
+	the fields might go away from other constraints, but that doesn't
+	address the fundamental problem, that some values won't collapse all
+	the way (stuck with static-initialized value).
+
+=== expressing constriants ===
+
+=== converting constraints to source modifications ===
+ - constraint conversion to source
+   - how to automatically convert task_struct->cred->uid=0 to
+	#define current_uid()   0 in #include/linux/cred.h
+
+=== converting references into dependencies ===
+ - watch for assignment
+ - use of data for conditional code
+	(if, for, do, while, switch, trigraph)
+	changing execution location (conditionally) at runtime:
+		function pointers (vfs, clock, etc.)  - enumerated values only
+			- consider all possibilities
+		function tables (irq) - enumerated values only
+			- consider all possibilities
+		self-modifying code (ftrace) - removing code only
+			- consider as if present
+		function pointer arithmetic - NOT USED??
+		module loading - is inside bubble of constraints
+			- apply constraint to module code
+		weak linking - is link-time, not run-time, enumerate only
+			- consider all possibilities
+  
+
+=== generating new constraints ===
+
+== Glossary ==
+constraint = specialization predicate = some statement concerning the state of the system that allows for specialization. ex: task_struct->cred->uid==0
+constraints can be either static or dynamic
+
+TypeGuard = synthetix project tool to find data accesses, comprehensively
+
+SSA = static single assignment
+
+dataflow = analyzing the flow of data (and types) through a system
+
+static = defined at compile-time
+
+invariant = something that is ALWAYS true
+
+quasi-invariant = something is is MOSTLY true (under known conditions)
+
+specialization = the act of using a contraint to optimize the code.  This makes the code less general - it can not handle items outside the scope of the constraint.

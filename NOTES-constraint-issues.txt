@@ -1,0 +1,10 @@
+For the uid0 constraint:
+
+current_uid_gid() is hard to deal with, so I removed all references to it
+(replacing it with individual calls to current_uid() and current_gid().
+
+There were only two places this was needed:
+ * kernel/auditsc.c:audit_log_abend()
+ * net/core/dev.c:__dev_set_promiscuity()
+
+ * include/linux/cred.h was also modified, to remove the macro

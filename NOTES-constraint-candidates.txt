@@ -1,0 +1,36 @@
+Here are some candidates for constraints:
+
+ * unused kernel command-line functions (See Ghent paper)
+ * kernel/time/ntp.c, timekeeping.c (reduce timer accuracy)
+    * wall_to_monotonic??
+    * all of timekeeping?
+ * procfs reductions (any unread items)
+ * kernel/sched/rt.c
+   * if no realtime tasks, why enabled?
+ * device tree parsers and handlers (based on static device tree)
+ * unused printf format handlers
+
+== things over 10k in my panda-tiny kernel ==
+11k	lib/vsprintf.o
+
+11k	drivers/tty/n_tty.o
+15k	drivers/tty/tty_io.o
+
+13k	kernel/sched/core.o
+13k	kernel/workqueue.o
+15k	kernel/signal.o
+
+12k	mm/vmscan.o
+12k	mm/mmap.o
+14k	mm/filemap.o
+14k	mm/memory.o
+17k	mm/page_alloc.o
+
+10k	fs/exec.o
+10k	fs/splice.o
+12k	fs/locks.o - support for fcntl()'s F_GETLK, F_SETLK, and F_SETLKW
+12k	fs/dcache.o
+13k	fs/namespace.o
+19k	fs/namei.o
+
+lib/bitmap has lots of unused functions

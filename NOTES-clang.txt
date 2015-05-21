@@ -1,0 +1,24 @@
+I installed clang with 'sudo apt-get install clang'
+(I'll need a cross-clang for real work.)
+
+to use the analyzer, do:
+ $ scan-build make
+
+No matter what I do, it doesn't generate any analysis reports
+ (I tried obvious_bug, with a null-pointer dereference, and it didn't catch it.)
+
+
+'clang -S -emit-llvm foo.c' produces foo.s with LLVM IR data
+'clang -cc1 foo.c -emit-llvm' produces foo.ll with LLVM IR data
+ - the output from the abve two commands was almost identical
+'llc foo.ll' produces foo.s with assembly data
+
+-cc1 causes -ast-print to be used
+'clang -cc1 -- help' has more information
+
+.bc is also an extension recognized for LLVM IR data
+
+'llc -mach=c foo.ll? -o foo.c
+
+
+bc = 'bitcode', I think

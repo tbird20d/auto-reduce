@@ -1,0 +1,621 @@
+
+
+
+== How to apply
+(recorded on April 1, 2013)
+Building with ttc target lto-work-yocto-arm:
+
+in work/auto-reduce/lto-work/linux-misc-andi-kleen:
+
+configure:
+ 
+CONFIG_OMIT_UNUSED=y
+CONFIG_OABI_COMPAT=n
+
+See "How to use" in this document...
+
+
+== Description
+One aspect of reducing memory footprint in the kernel is eliminating unused
+system calls.  On systems with generic C libraries, this is difficult.
+However, it is possible to scan statically-linked binaries for syscall usage.
+
+As a test case, a system will be built with statically-linked busybox.
+That binary will be analyzed for system call instructions.
+
+To build busybox statically for ARM, do 'ttc <target> setenv'
+
+This sets CROSS_COMPILE and KBUILD_OUTPUT (which apparently the busybox
+build system utilize).  I built with 'ttc panda setenv', and I had
+to create ../build/panda as a build directory.
+
+I reduced the number of utilities in busybox to a central core consisting
+of the following functions:
+
+{{{
+Currently defined functions:                                                    
+        [, [[, ash, basename, cat, chgrp, chmod, chown, cksum, comm, cp, cut,   
+        date, df, dirname, dmesg, echo, env, expr, false, halt, head, id, init, 
+        kill, ln, ls, mkdir, mknod, more, mount, mv, poweroff, ps, pwd, reboot, 
+        rm, rmdir, sed, seq, sh, sleep, sort, split, stat, stty, sum, sync,     
+        tail, tee, test, time, touch, true, umount, uname, uniq, wc, which,     
+        whoami, yes
+}}}
+
+Apparently, the syscall interface is consists of arguments in r1-r4,
+syscall number in r7, and invocation of 'svc 0x00000000'.
+
+Here's the getuid() syscall, from user space:
+
+0005f6d4 <__getuid>:
+   5f6d4:       e92d0880        push    {r7, fp}
+   5f6d8:       e3a070c7        mov     r7, #199        ; 0xc7
+   5f6dc:       e28db004        add     fp, sp, #4
+   5f6e0:       ef000000        svc     0x00000000
+   5f6e4:       e24bd004        sub     sp, fp, #4
+   5f6e8:       e8bd0880        pop     {r7, fp}
+   5f6ec:       e12fff1e        bx      lr
+
+
+Using $(CROSS_COMPILE)objdump -D -S busybox_unstrippped >busybox-objdump
+
+There are 'rsbsvc' and 'subsvc' instructions, as well as lots of 
+'svcpl' 'svcvs', 'svcmi', 'svcvs', 'svcvc', 'svceq', 'svcls' instructions.
+I believe the last 2 characters are conditional codes.
+A lot of these were bogus (I used objdump -D, which converted data segments
+as well.)
+
+Using $(CROSS_COMPILE)objdump -d -S busybox_unstripped >busybox-objdump
+There are only: 'svc	0x00000000' calls.
+
+== programs and data ==
+
+statically linked busybox is located in:
+	work/auto-reduce/busybox/build/panda/busybox_unstripped
+objdump of static busybox is located in
+	work/auto-reduce/busybox/data/busybox-odjdump
+
+I wrote a program called "find-syscalls.py" to scan the disassembly file
+for a program, and scan for used syscalls.  It includes
+a listing of all the unused system calls (based on a table of all the
+system calls available, which is included in the program)
+
+The program is used to produce a syscall report. (in work/auto-reduce/work-dir,
+the following syscall-report was produced:)
+
+
+There are 395 total syscalls, with 106 unique values found.
+
+Here is the syscall report for busybox:
+-------------
+syscall: 1 (exit)  called 2 times
+syscall: 3 (read)  called 16 times
+syscall: 4 (write)  called 9 times
+syscall: 5 (open)  called 27 times
+syscall: 6 (close)  called 59 times
+syscall: 9 (link)  called 1 time
+syscall: 10 (unlink)  called 1 time
+syscall: 11 (execve)  called 1 time
+syscall: 12 (chdir)  called 1 time
+syscall: 14 (mknod)  called 1 time
+syscall: 15 (chmod)  called 1 time
+syscall: 19 (lseek)  called 1 time
+syscall: 20 (getpid)  called 1 time
+syscall: 21 (mount)  called 1 time
+syscall: 29 (pause)  called 3 times
+syscall: 33 (access)  called 1 time
+syscall: 36 (sync)  called 1 time
+syscall: 37 (kill)  called 2 times
+syscall: 38 (rename)  called 1 time
+syscall: 39 (mkdir)  called 1 time
+syscall: 40 (rmdir)  called 1 time
+syscall: 41 (dup)  called 1 time
+syscall: 42 (pipe)  called 1 time
+syscall: 43 (times)  called 1 time
+syscall: 45 (brk)  called 1 time
+syscall: 51 (acct)  called 1 time
+syscall: 52 (umount)  called 1 time
+syscall: 54 (ioctl)  called 5 times
+syscall: 57 (setpgid)  called 1 time
+syscall: 60 (umask)  called 1 time
+syscall: 61 (chroot)  called 1 time
+syscall: 63 (dup2)  called 1 time
+syscall: 64 (getppid)  called 1 time
+syscall: 65 (getpgrp)  called 1 time
+syscall: 66 (setsid)  called 1 time
+syscall: 74 (sethostname)  called 1 time
+syscall: 75 (setrlimit)  called 1 time
+syscall: 78 (gettimeofday)  called 1 time
+syscall: 79 (settimeofday)  called 1 time
+syscall: 83 (symlink)  called 1 time
+syscall: 85 (readlink)  called 2 times
+syscall: 87 (swapon)  called 1 time
+syscall: 88 (reboot)  called 1 time
+syscall: 91 (munmap)  called 1 time
+syscall: 94 (fchmod)  called 1 time
+syscall: 96 (getpriority)  called 1 time
+syscall: 97 (setpriority)  called 1 time
+syscall: 99 (statfs)  called 1 time
+syscall: 103 (syslog)  called 1 time
+syscall: 104 (setitimer)  called 1 time
+syscall: 114 (wait4)  called 6 times
+syscall: 115 (swapoff)  called 1 time
+syscall: 116 (sysinfo)  called 1 time
+syscall: 118 (fsync)  called 3 times
+syscall: 119 (sigreturn)  called 2 times
+syscall: 120 (clone)  called 1 time
+syscall: 122 (uname)  called 1 time
+syscall: 124 (adjtimex)  called 1 time
+syscall: 125 (mprotect)  called 1 time
+syscall: 128 (init_module)  called 1 time
+syscall: 129 (delete_module)  called 1 time
+syscall: 133 (fchdir)  called 1 time
+syscall: 136 (personality)  called 1 time
+syscall: 140 (llseek)  called 1 time
+syscall: 142 (select)  called 3 times
+syscall: 143 (flock)  called 1 time
+syscall: 145 (readv)  called 2 times
+syscall: 146 (writev)  called 5 times
+syscall: 147 (getsid)  called 1 time
+syscall: 148 (fdatasync)  called 3 times
+syscall: 150 (mlock)  called 1 time
+syscall: 151 (munlock)  called 1 time
+syscall: 155 (sched_getparam)  called 1 time
+syscall: 156 (sched_setscheduler)  called 1 time
+syscall: 157 (sched_getscheduler)  called 1 time
+syscall: 158 (sched_yield)  called 1 time
+syscall: 159 (sched_get_priority_max)  called 1 time
+syscall: 160 (sched_get_priority_min)  called 1 time
+syscall: 162 (nanosleep)  called 3 times
+syscall: 163 (mremap)  called 1 time
+syscall: 168 (poll)  called 2 times
+syscall: 173 (rt_sigreturn)  called 2 times
+syscall: 174 (rt_sigaction)  called 1 time
+syscall: 175 (rt_sigprocmask)  called 1 time
+syscall: 179 (rt_sigsuspend)  called 3 times
+syscall: 183 (getcwd)  called 1 time
+syscall: 190 (vfork)  called 1 time
+syscall: 191 (ugetrlimit)  called 1 time
+syscall: 192 (mmap2)  called 2 times
+syscall: 194 (ftruncate64)  called 1 time
+syscall: 195 (stat64)  called 1 time
+syscall: 196 (lstat64)  called 1 time
+syscall: 197 (fstat64)  called 1 time
+syscall: 198 (lchown)  called 1 time
+syscall: 199 (getuid)  called 1 time
+syscall: 200 (getgid)  called 1 time
+syscall: 201 (geteuid)  called 1 time
+syscall: 202 (getegid)  called 1 time
+syscall: 205 (getgroups)  called 1 time
+syscall: 206 (setgroups)  called 1 time
+syscall: 207 (fchown)  called 1 time
+syscall: 208 (setresuid)  called 1 time
+syscall: 210 (setresgid)  called 1 time
+syscall: 212 (chown)  called 1 time
+syscall: 213 (setuid)  called 1 time
+syscall: 214 (setgid)  called 1 time
+syscall: 217 (getdents64)  called 1 time
+syscall: 218 (pivot_root)  called 1 time
+syscall: 220 (madvise)  called 1 time
+syscall: 221 (fcntl64)  called 3 times
+syscall: 224 (gettid)  called 1 time
+syscall: 225 (readahead)  called 1 time
+syscall: 238 (tkill)  called 1 time
+syscall: 239 (sendfile64)  called 1 time
+syscall: 240 (futex)  called 188 times
+syscall: 248 (exit_group)  called 1 time
+syscall: 264 (clock_getres)  called 2 times
+syscall: 266 (statfs64_wrapper)  called 1 time
+syscall: 268 (tgkill)  called 1 time
+syscall: 269 (utimes)  called 1 time
+syscall: 284 (listen)  called 1 time
+syscall: 292 (recvfrom)  called 3 times
+syscall: 296 (sendmsg)  called 3 times
+syscall: 300 (semctl)  called 1 time
+syscall: 304 (msgctl)  called 1 time
+syscall: 308 (shmctl)  called 1 time
+syscall: 327 (fstatat64)  called 1 time
+unused syscall: 2 (fork_wrapper)
+unused syscall: 7 (waitpid)
+unused syscall: 8 (creat)
+unused syscall: 13 (time)
+unused syscall: 16 (lchown16)
+unused syscall: 17 (break)
+unused syscall: 18 (stat)
+unused syscall: 22 (oldumount)
+unused syscall: 23 (setuid16)
+unused syscall: 24 (getuid16)
+unused syscall: 25 (stime)
+unused syscall: 26 (ptrace)
+unused syscall: 27 (alarm)
+unused syscall: 28 (fstat)
+unused syscall: 30 (utime)
+unused syscall: 31 (stty)
+unused syscall: 32 (getty)
+unused syscall: 34 (nice)
+unused syscall: 35 (ftime)
+unused syscall: 44 (prof)
+unused syscall: 46 (setgid16)
+unused syscall: 47 (getgid16)
+unused syscall: 48 (signal)
+unused syscall: 49 (geteuid16)
+unused syscall: 50 (getegid16)
+unused syscall: 53 (lock)
+unused syscall: 55 (fcntl)
+unused syscall: 56 (mpx)
+unused syscall: 58 (ulimit)
+unused syscall: 59 (olduname)
+unused syscall: 62 (ustat)
+unused syscall: 67 (sigaction)
+unused syscall: 68 (sgetmask)
+unused syscall: 69 (ssetmask)
+unused syscall: 70 (setreuid16)
+unused syscall: 71 (setregid16)
+unused syscall: 72 (sigsuspend)
+unused syscall: 73 (sigpending)
+unused syscall: 76 (old_getrlimit)
+unused syscall: 77 (getrusage)
+unused syscall: 80 (getgroups16)
+unused syscall: 81 (setgroups16)
+unused syscall: 82 (old_select)
+unused syscall: 84 (lstat)
+unused syscall: 86 (uselib)
+unused syscall: 89 (old_readdir)
+unused syscall: 90 (old_mmap)
+unused syscall: 92 (truncate)
+unused syscall: 93 (ftruncate)
+unused syscall: 95 (fchown16)
+unused syscall: 98 (profil)
+unused syscall: 100 (fstatfs)
+unused syscall: 101 (ioperm)
+unused syscall: 102 (socketcall)
+unused syscall: 105 (getitimer)
+unused syscall: 106 (stat)
+unused syscall: 107 (lstat)
+unused syscall: 108 (fstat)
+unused syscall: 109 (uname)
+unused syscall: 110 (iopl)
+unused syscall: 111 (vhangup)
+unused syscall: 112 (idle)
+unused syscall: 113 (syscall)
+unused syscall: 117 (ipc)
+unused syscall: 121 (setdomainname)
+unused syscall: 123 (modify_ldt)
+unused syscall: 126 (sigprocmask)
+unused syscall: 127 (create_module)
+unused syscall: 130 (get_kernel_syms)
+unused syscall: 131 (quotactl)
+unused syscall: 132 (getpgid)
+unused syscall: 134 (bdflush)
+unused syscall: 135 (sysfs)
+unused syscall: 137 (afs_syscall)
+unused syscall: 138 (setfsuid16)
+unused syscall: 139 (setfsgid16)
+unused syscall: 141 (getdents)
+unused syscall: 144 (msync)
+unused syscall: 149 (sysctl)
+unused syscall: 152 (mlockall)
+unused syscall: 153 (munlockall)
+unused syscall: 154 (sched_setparam)
+unused syscall: 161 (sched_rr_get_interval)
+unused syscall: 164 (setresuid16)
+unused syscall: 165 (getresuid16)
+unused syscall: 166 (vm86)
+unused syscall: 167 (query_module)
+unused syscall: 169 (nfsservctl)
+unused syscall: 170 (setresgid16)
+unused syscall: 171 (getresgid16)
+unused syscall: 172 (prctl)
+unused syscall: 176 (rt_sigpending)
+unused syscall: 177 (rt_sigtimedwait)
+unused syscall: 178 (rt_sigqueueinfo)
+unused syscall: 180 (pread64)
+unused syscall: 181 (pwrite64)
+unused syscall: 182 (chown16)
+unused syscall: 184 (capget)
+unused syscall: 185 (capset)
+unused syscall: 186 (sigaltstack_wrapper)
+unused syscall: 187 (sendfile)
+unused syscall: 188 (getpmsg)
+unused syscall: 189 (putpmsg)
+unused syscall: 193 (truncate64)
+unused syscall: 203 (setreuid)
+unused syscall: 204 (setregid)
+unused syscall: 209 (getresuid)
+unused syscall: 211 (getresgid)
+unused syscall: 215 (setfsuid)
+unused syscall: 216 (setfsgid)
+unused syscall: 219 (mincore)
+unused syscall: 222 (TUX)
+unused syscall: 223 (unused)
+unused syscall: 226 (setxattr)
+unused syscall: 227 (lsetxattr)
+unused syscall: 228 (fsetxattr)
+unused syscall: 229 (getxattr)
+unused syscall: 230 (lgetxattr)
+unused syscall: 231 (fgetxattr)
+unused syscall: 232 (listxattr)
+unused syscall: 233 (llistxattr)
+unused syscall: 234 (flistxattr)
+unused syscall: 235 (removexattr)
+unused syscall: 236 (lremovexattr)
+unused syscall: 237 (fremovexattr)
+unused syscall: 241 (sched_setaffinity)
+unused syscall: 242 (sched_getaffinity)
+unused syscall: 243 (io_setup)
+unused syscall: 244 (io_destroy)
+unused syscall: 245 (io_getevents)
+unused syscall: 246 (io_submit)
+unused syscall: 247 (io_cancel)
+unused syscall: 249 (lookup_dcookie)
+unused syscall: 250 (epoll_create)
+unused syscall: 251 (epoll_ctl)
+unused syscall: 252 (epoll_wait)
+unused syscall: 253 (remap_file_pages)
+unused syscall: 254 (set_thread_area)
+unused syscall: 255 (get_thread_area)
+unused syscall: 256 (set_tid_address)
+unused syscall: 257 (timer_create)
+unused syscall: 258 (timer_settime)
+unused syscall: 259 (timer_gettime)
+unused syscall: 260 (timer_getoverrun)
+unused syscall: 261 (timer_delete)
+unused syscall: 262 (clock_settime)
+unused syscall: 263 (clock_gettime)
+unused syscall: 265 (clock_nanosleep)
+unused syscall: 267 (fstatfs64_wrapper)
+unused syscall: 270 (arm_fadvise64_64)
+unused syscall: 271 (pciconfig_iobase)
+unused syscall: 272 (pciconfig_read)
+unused syscall: 273 (pciconfig_write)
+unused syscall: 274 (mq_open)
+unused syscall: 275 (mq_unlink)
+unused syscall: 276 (mq_timedsend)
+unused syscall: 277 (mq_timedreceive)
+unused syscall: 278 (mq_notify)
+unused syscall: 279 (mq_getsetattr)
+unused syscall: 280 (waitid)
+unused syscall: 281 (socket)
+unused syscall: 282 (bind)
+unused syscall: 283 (connect)
+unused syscall: 285 (accept)
+unused syscall: 286 (getsockname)
+unused syscall: 287 (getpeername)
+unused syscall: 288 (socketpair)
+unused syscall: 289 (send)
+unused syscall: 290 (sendto)
+unused syscall: 291 (recv)
+unused syscall: 293 (shutdown)
+unused syscall: 294 (setsockopt)
+unused syscall: 295 (getsockopt)
+unused syscall: 297 (recvmsg)
+unused syscall: 298 (semop)
+unused syscall: 299 (semget)
+unused syscall: 301 (msgsnd)
+unused syscall: 302 (msgrcv)
+unused syscall: 303 (msgget)
+unused syscall: 305 (shmat)
+unused syscall: 306 (shmdt)
+unused syscall: 307 (shmget)
+unused syscall: 309 (add_key)
+unused syscall: 310 (request_key)
+unused syscall: 311 (keyctl)
+unused syscall: 312 (semtimedop)
+unused syscall: 313 (vserver)
+unused syscall: 314 (ioprio_set)
+unused syscall: 315 (ioprio_get)
+unused syscall: 316 (inotify_init)
+unused syscall: 317 (inotify_add_watch)
+unused syscall: 318 (inotify_rm_watch)
+unused syscall: 319 (mbind)
+unused syscall: 320 (get_mempolicy)
+unused syscall: 321 (set_mempolicy)
+unused syscall: 322 (openat)
+unused syscall: 323 (mkdirat)
+unused syscall: 324 (mknodat)
+unused syscall: 325 (fchownat)
+unused syscall: 326 (futimesat)
+unused syscall: 328 (unlinkat)
+unused syscall: 329 (renameat)
+unused syscall: 330 (linkat)
+unused syscall: 331 (symlinkat)
+unused syscall: 332 (readlinkat)
+unused syscall: 333 (fchmodat)
+unused syscall: 334 (faccessat)
+unused syscall: 335 (pselect6)
+unused syscall: 336 (ppoll)
+unused syscall: 337 (unshare)
+unused syscall: 338 (set_robust_list)
+unused syscall: 339 (get_robust_list)
+unused syscall: 340 (splice)
+unused syscall: 341 (sync_file_range2)
+unused syscall: 342 (tee)
+unused syscall: 343 (vmsplice)
+unused syscall: 344 (move_pages)
+unused syscall: 345 (getcpu)
+unused syscall: 346 (epoll_pwait)
+unused syscall: 347 (kexec_load)
+unused syscall: 348 (utimensat)
+unused syscall: 349 (signalfd)
+unused syscall: 350 (timerfd_create)
+unused syscall: 351 (eventfd)
+unused syscall: 352 (fallocate)
+unused syscall: 353 (timerfd_settime)
+unused syscall: 354 (timerfd_gettime)
+unused syscall: 355 (signalfd4)
+unused syscall: 356 (eventfd2)
+unused syscall: 357 (epoll_create1)
+unused syscall: 358 (dup3)
+unused syscall: 359 (pipe2)
+unused syscall: 360 (inotify_init1)
+unused syscall: 361 (preadv)
+unused syscall: 362 (pwritev)
+unused syscall: 363 (rt_tgsigqueueinfo)
+unused syscall: 364 (perf_event_open)
+unused syscall: 365 (recvmmsg)
+unused syscall: 366 (accept4)
+unused syscall: 367 (fanotify_init)
+unused syscall: 368 (fanotify_mark)
+unused syscall: 369 (prlimit64)
+unused syscall: 370 (name_to_handle_at)
+unused syscall: 371 (open_by_handle_at)
+unused syscall: 372 (clock_adjtime)
+unused syscall: 373 (syncfs)
+unused syscall: 374 (sendmmsg)
+unused syscall: 375 (setns)
+unused syscall: 376 (process_vm_readv)
+warning: syscall: unknown (unknown)  called 2 times
+  from functions:
+    .text
+    .text
+Line containing r7 load:     9478:	e1a07000 	mov	r7, r0
+   (use '-w' to see full context)
+max line count between set of r7 and svc instruction= 43
+function where this max occurred= .text
+number of times r7 was not set inside the same function as svc= 0
+warnings of unknown syscall number= 2
+-------------
+
+== How to eliminate a syscall in the kernel ==
+in ARM, the syscall jump table is in arch/arm/kernel/calls.S
+
+Not that each syscall symbols starts with "sys_" as a prefix.
+
+Some names are not the same as in docs or in the #defines:
+e.g. sys_fork vs. sys_fork_wrapper in the table
+
+A system call that is deprecated is changed to sys_ni_syscall in the call
+table.
+
+Some calls are marked OBSOLETE()
+
+There are cond_syscall() as well - what's that about?
+in kernel/sys_ni.c there are con_syscall on a whole lot of syscall functions
+kernel/sys_ni.c has the actual implementation of sys_ni_syscall()
+cond_syscall() defines a weak symbol, which ends up at sys_ni_syscall(),
+if no symbol is defined by that name otherwise.
+
+calls.S is includes in arch/arm/kernel/entry-common.S
+
+entry-common.S includes calls.S 3 times:
+
+one time, it defines CALL(x) such that it can be used to count the number
+of CALL definitions, and leave the result in NR_syscalls.
+
+a second time, it defines the sys_call_table
+
+a third time, it defines the sys_oabi_call_table
+
+A syscall enters the kernel from user-space at
+	arch/arm/kernel/entry-common.S:vector_swi
+
+The address for vector_swi is stored at a location in:
+	arch/arm/kernel/entry-armv.S, right before __vectors_start.
+An instruction in that table does a 'ldr pc, <that location>'
+
+The table of vectors defined at __vectors_start is copied to a special
+vectors page by arch/arm/kernel/traps.c:early_trap_init()
+
+So, the code executes 'mov r7, #xx', then 'svc 0x00000000'
+
+This causes the cpu to start executing at 0xffff0000 + 0x00000000
+which does a 'ldr pc, .LCvswi', which loads pc with the value of
+vector_swi.
+
+In vector_swi, registers are saved and set up, r9 (tsk) is set to thread_info.
+r8 (tbl) is set to &sys_call_table, do a bunch of tests for security
+and tracing, then 'ldrcc pc, [tbl, scno, lsl #2]', which will transfer
+control to the 'sys_*' C function.
+
+
+=== notes on the fork (sys_fork) system call ===
+Called through calls.S via CALL(sys_fork_wrapper)
+sys_fork_wrapper() is in entry-common.S
+
+
+=== notes on implementation of syscall elimination ===
+I decided to mark unused syscalls in calls.S with an UNUSED() macro.
+
+I wrote a second program which parses the output from find-syscalls.py
+and changes the lines in calls.S to be UNUSED() for those syscalls that
+are unused.
+
+This program is called mark-unused.py
+
+=== notes on x86 syscall table ===
+in arch/x86/syscall_32.c, it includes <asm/syscalls_32.h>
+(which maps to arch/x86/include/asm/syscalls_32.h)
+
+asm/syscalls_32.h is included twice:
+first, it is included to define the 'extern' declarations for all the
+syscall function symbols.
+
+Second, it is included to define the actual sys_call_table itself.
+
+== How to use ==
+1. build static busybox with minimal commands
+2. run find-syscalls.py on the busybox object file
+3. apply omit-unused-syscalls.patch
+4. configure the kernel with CONFIG_OMIT_UNUSED_SYSCALLS=y
+  * it's on the "Kernel Features" menu, as "Omit unused system calls"
+5. run mark-unused.py on the kernel, using syscall-report.txt
+  $ mark-unused.py ~/work/auto-reduce/work-dir/syscall-report.txt arch/arm/kernel/calls.S
+6. re-compile the kernel
+  $ ttc kbuild
+  $ confgrep omit_unused
+CONFIG_OMIT_UNUSED_SYSCALLS=y
+  $ grep UNUSED arch/arm/kernel/calls.S | wc
+    211     397    7361
+7. run kernel
+
+
+== 2013-01-30 test ==
+Using the linux-misc-andi-kleen kernel, with the omit-unused-syscalls.patch
+applied, I tested the kernel with and without LTO.
+
+Without LTO, there was no reduction in kernel size.  With LTO, there ALSO
+was no reduction in kernel size.
+
+I investigated sys_sync, which is defined in kernel/sched/core.c.
+It is declared with DEFINE_SYSCALL1(), which in turn includes other
+macros, eventually using 'asmlinkage' in the definition.  This results
+in a function attribute of __attribute(externally_visible), which prevents
+the compiler from eliminating the function.
+
+I made a new macro DEFINE_SYSCALL1_UNUSED, and used it to define sys_sync.
+There was a savings of 180 bytes when I did this.  (There may have been
+more savings - a problem with usage of CONFIG_OABI_COMPAT skewed the size
+results for the system with LTO and sys_sync marked as unused.
+
+A better system might be to make an include file with definitions like:
+
+#define  IS_UNUSED_sync
+#define  IS_UNUSED_open
+#define  IS_UNUSED_read
+
+#ifdef IS_UNUSED_sync
+#define sync_func	sys_ni_syscall
+#define asmlinkage_sync
+#else
+#define sync_func	sys_sync
+#define asmlinkage_sync	asmlinkage
+#endif
+
+Define this in include/linux/syscall_usage.h
+
+The definition of CALL(sync) in arch/arm/kernel/calls.S
+should use <name>_func.
+
+The definition of SYSCALL_DEFINEx(sync) in include/linux/
+should use: asmlinkage_<name>
+
+arch/arm/kernel/entry-common.S defines the syscall table by setting up
+the OBSOLETE, ABI, and UNUSED macros, then including
+arch/arm/kernel/calls.S, which builds the actual syscall jump table
+
+*** I created a program make_syscall_usage.py, which generates a portion
+of the file syscall_usage.h.  Specifically, it generates the repetitive
+#ifndef IS_UNUSED_x... sections, which define func_x and asmlinkage_x for
+each syscall.   These are used in the syscall definition macros in
+syscalls.h.  This is used to control the visibility of each syscall on
+an individual basis.

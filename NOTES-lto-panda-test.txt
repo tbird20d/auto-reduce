@@ -1,0 +1,71 @@
+
+I want to compare a non-lto kernel with an LTO kernel on panda:
+
+== non-lto information ==
+
+kernel timestamp:               Feb 15, 13:53
+time for full build:		1m5.87s
+time for incremental build:	0m5.24s
+kernel image size:		5854008
+compressed uImage size:		2849920
+system meminfo MemTotal:	17804 kB, 17804, ditto, ditto, 17804
+system meminfo MemFree:		11020 kB, 10592, 10880, 10908, 10916
+smsc95xx timestamp:                                 2.483123, 2.479431, 2.451934
+boot time:			2.466369, 4.862335, 4.775207, 3.930206, 4.847564
+performance:
+
+== lto information ==
+
+kernel timestamp:		Feb 15 14:09
+time for full build:		3m22.01s
+time for incremental build:	2m12.45s
+kernel image size:		5467652
+compressed uImage size:		2694224
+system meminfo MemTotal:	18188 kB, ditto, ditto
+system meminfo MemFree:		11380 kB, 11902, 11260
+smsc95xx timestamp:             2.473876, 2.414428, 2.379943    
+boot time:			2.541107, 5.417785, 4.909515
+performance:
+
+
+== comparison table ==
+
+Kernel:				non-lto		lto
+time for full build:		1m5.87s	        3m22s
+time for incremental build:	0m5.24s		2m12s	
+kernel image size:		5854008		5467652
+compressed uImage size:		2849920		2694224
+system meminfo MemTotal:	17804 kB	18188 kB
+system meminfo MemFree:		11020 kB	11260 kB
+boot time:			2.466369	2.414428
+performance:			<still working on results>
+
+size-delta:
+$ size-delta vmlinux.non-lto vmlinux.lto
+vmlinux.non-lto  =>  vmlinux.lto
+       baseline   other   change  percent
+ text:  5242000  4869340  -372660  -7%
+ data:   490184   476200   -13984  -2%
+  bss:   121824   122112      288   0%
+total:  5854008  5467652  -386356  -6%
+
+
+== testing notes ==
+time for full compile:
+ $ make distclean
+ $ cp config-that-works $KBUILD_OUTPUT/.config
+ $ time ttc kbuild
+
+Time for incremental compile:
+ $ touch init/main.c
+ $ ttc kbuild
+
+Kernel image size from 'dec' field from 'size vmlinux.<version>'
+
+Compressed uImage size from 'ls -l uImage.<version>'
+
+Boot time to: "Freeing init memory:" kernel message.
+
+== LTP performance test ==
+* use /opt/LTP/runtest/lto-test, timed, with stack depth
+ * runltp -p -f /opt/LTP/runtest/lto-test | tee /tmp/ltp-run-2013-02-27-06:30:00-log-normal-local-rootfs.txt

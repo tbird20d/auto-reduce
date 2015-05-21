@@ -1,0 +1,73 @@
+Here are some notes for my first results presentation for auto-reduce.txt
+
+What is "Auto-Reduce"?
+Why?
+How does it work?
+What is cost?
+What is the benefit?
+Can it be maintained?
+ - version check
+
+Experiment
+ - mostly manual steps
+   - built some prototype automation tools
+ - identify manual steps
+   - automate one by one
+ - large leaps (no known way of automating)
+
+Tools created
+ - auto-reduce.py
+   - constraints.conf
+ - find_refs.py
+ - find-macro-def.py
+ - find_assign_froms.py
+ - helper tools:
+   - is-built.py
+   - get_sizes.py
+
+= Results =
+= Analysis =
+It is not sufficient to parse the source with grep.
+ - you must use the compiler or a tool that can parse C to make it work
+   - grep showed 10,000 results searching for 'uid'
+Automation must be used, and it must be 99% effective
+ - applying constraints by hand (via patching) will not scale
+   - analyzing 37 assignment locations took about 2 hours
+
+Difficult issues:
+ - functions with side effects
+   - functions with side effects can't be eliminated
+     - example atoi()
+   - C doesn't indicate which functions have side effects
+ - parsing functions
+   - have to analyze function to determine what fields are being accessed
+     - example: getpwent() -> converts from /etc/passed to struct passwd.
+       - should be able to determine what fields are used by caller, and
+	eliminate parsing, but this is quite difficult
+ - printf
+   - constant propagation into printfs
+     - example: seq_printf() in proc filesystem
+ - no good way to deal with 'aliasing'
+   - access to variables via another name
+     - eg. re-casting a pointer
+   - memcpy of an entire structure (can capture field references, though)
+ - put_user is a form of assignment (across layers)
+
+Observation:
+ - uid0 = special case of data constraint
+   - single value = constant, which compiler knows how to optimize for
+   - compiler doesn't know what to do with constrained set of values
+     - eg. ioctl numbers (most are unused)
+ - found examples where variables were very close to constant
+   - quasi-invariant = initialization value, then single runtime value
+     - eg. 
+
+Robustness:
+ - tool works on compiled code
+   - this means, a complete optimization pass is required when the kernel
+   compile-time options change
+     - eg. a change in a kernel config option changes the source that is
+     compiled
+     - new code comes into scope, and must be analyzed and optimized
+
+Related projects

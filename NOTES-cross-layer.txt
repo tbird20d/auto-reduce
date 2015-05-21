@@ -1,0 +1,50 @@
+uClibc has a difficult-to-parse macro declaration of getuid()
+
+How to determine that getuid syscall in kernel has constant return code?
+ * Can manually inspect, but that's hidden in macros in 3.5.
+ * For any non-trivial code, you would need the output from the
+   optimizer to determine constraints on the output from the syscall
+
+== uClibc notes ==
+
+  * There are only 5 references to getuid in uClibc
+   * not much space savings there.
+  * ld.so has it's own syscall definition called '_dl_getuid'
+
+How to convert kernel constant constraint to getuid syscall
+constraint, in the getuid declaration in uClibc?
+
+Call is so thin in library, that changing the reference in the
+header file is more effective.
+
+== busybox notes ==
+ * number of references to 'getuid(' in busybox (via grep)
+   34
+
+ * size difference with getuid redefined in /usr/include/unistd.h
+   $ size-delta busybox.base busybox
+busybox.base  =>  busybox
+       baseline   other   change  percent
+ text:   966906   965032    -1874   0%
+ data:     4114     4098      -16   0%
+  bss:     9536     9536        0   0%
+total:   980556   978666    -1890   0%
+ * 1890 bytes in busybox (default configuration)
+
+=== Patch for /usr/include/unistd.h ===
+--- unistd.h.save	2012-07-09 17:28:37.040324365 -0700
++++ unistd.h	2012-07-09 17:34:11.036314767 -0700
+@@ -695,7 +695,8 @@
+ #endif
+ 
+ /* Get the real user ID of the calling process.  */
+-extern __uid_t getuid (void) __THROW;
++#define getuid()	0
++//extern __uid_t getuid (void) __THROW;
+ 
+ /* Get the effective user ID of the calling process.  */
+ extern __uid_t geteuid (void) __THROW;
+--------------------------
+
+ * via header file macro?
+

@@ -1,0 +1,259 @@
+Notes about uid usage in Linux:
+
+= uid in busybox (1.10 on crest) =
+loginutils/login.c:  change_identity(struct passwd pw)
+libbb/change_identity.c:changed_identity(pw) xsetuid(pw->pw_uid)
+libbb/xfuncs.c:xsetuid(uid) setuid(uid)
+
+= uid in the kernel =
+ - uid is not directly inside task_struct
+ - uid is inside task->cred and task->real_cred
+ - there are lots of other data fields related to uid that could evaporate
+   - e.g. suid, euid, fsuid, cred vs. real_cred
+   - should find assignment to euid and somehow capture constraint on uid
+
+The fact that these are protected by rcu means that there should be no direct
+references.  (Not sure if this is helpful or makes things more difficult.)
+
+#include/linux/cred.h
+struct cred {
+	kuid_t	uid;
+	kuid_t suid;
+	kuid_t euid;
+	kuid_t fsuid;
+
+	struct user_struct *user;
+}
+
+#include/linux/sched.h
+user_struct {
+	struct key *uid_keyring; - only if CONFIG_KEYS=y
+	
+	struct hlist_node uidhash_node;
+	kuid_t uid;
+}
+
+#include/linux/sched.h
+task_struct {
+	struct cred __rcu *real_cred;
+	struct cred __rcu *cred;
+
+	uid_t loginuid; - only if CONIFG_AUDITSYSCALL=y
+}
+
+########################
+SYSCALL_DEFINE0(getuid)
+  current_uid()
+    current_cred_xxx(uid)
+       current_cred()->xxx
+         rcu_dereference_protected(current->cred, 1)->uid
+	   __rcu_dereference_protected((current->cred),1, __rcu)->uid
+             rcu_lockdep_assert(1) "...")
+	     rcu_dereference_sparse(current->cred, __rcu)->uid
+	     (typeof(current->cred) __force __kernel *)(current->cred)->uid;
+		
+
+NOTE:
+task_uid = task->real_cred->uid
+current_uid = current->cred->uid
+
+== Exhaustive search of structures in /include that include the field 'uid' ==
+structures containing "uid" (without leading or trailing chars):
+(there are 50 structures in /include)
+include/acpi/actbl1.h:struct acpi_table_ecdt.uid (u32)
+include/acpi/actbl1.h:struct acpi_madt_local_sapic.uid (u32)
+include/acpi/actbl1.h:struct acpi_madt_local_x2apic.uid (u32)
+include/acpi/actbl1.h:struct acpi_madt_local_x2apic_nmi.uid (u32)
+include/acpi/actbl1.h:struct acpi_madt_generic_interrupt.uid (u32)
+include/asm_generic/ipcbuf.h:struct ipc64_perm.uid (__kernel_uid32_t)
+include/drm/drm.h:strct drm_client.uid (unsigned long)
+include/drm/drmP.h:strct drm_file.uid (uid_t)
+include/linux/amigaffs.h:struct affs_tail.uid (__be16)
+include/linux/audit.h:struct audit_sig_info.uid (uid_t)
+include/linux/auto_dev-ioctl.h:struct args_requester.uid (__u32)
+include/linux/auto_fs4.h:struct autofs_v5_packet.uid (__u32)
+include/linux/ceph/ceph_fs.h:union ceph_mds_request_args.setattr.uid (__le32)
+include/linux/ceph/ceph_fs.h:struct ceph_mds_reply_inode.uid (__le32)
+include/linux/ceph/ceph_fs.h:struct ceph_mds_caps.uid (__le32)
+include/linux/coda.h:struct coda_in_hdr.uid (vuid_t)
+include/linux/coda.h:struct coda_purgeuser_out.uid (vuid_t)
+include/linux/cramfs_fs.h:struct cramfs_inode.uid (__32:CRAMFS_UID_WIDTH)
+**include/linux/cred.h:struct cred.uid(kuid_t) **** (the real one)
+include/linux/fs.h:struct fown_struct.uid (kuid_t)
+include/linux/fuse.h:struct fuse_attr.uid (__u32)
+include/linux/fuse.h:struct fuse_setattr_in.uid (__u32)
+include/linux/fuse.h:struct fuse_in_header.uid (__u32)
+include/linux/ipc.h:struct ipc_perm.uid (__kernel_uid_t)
+include/linux/ipc.h:struct kerne_ipc_perm.uid (uid_t)
+include/linux/jffs2.h:struct jffs2_raw_inode.uid (jint16_t)
+include/linux/key.h:struct key.uid (uid_t)
+include/linux/ncp_mount.h:struct ncp_mount_data.uid (__kernel_uid_t)
+include/linux/ncp_mount.h:struct ncp_mount_data_v4.uid (unsigned long)
+include/linux/nfs_xdr.h:struct nfs_fattr.uid (__32)
+include/linux/nilfs2_fs2.h:struct jffs2_raw_inode.uid (jint16_t)
+include/linux/proc_fs.h:struct proc_dir_entry.uid (kuid_t)
+include/linux/sched.h:struct user_struct.uid (kuid_t)
+include/linux/shmem_fs.h:struct shmem_sb_info.uid (kuid_t)
+include/linux/socket.h:struct ucred.uid (__u32)
+include/linux/stat.h:struct kstat.uid (kuid_t)
+include/linux/sunrpc/auth.h:struct auth_cred.uid (uid_t)
+include/net/9p/9p.h:struct p9_wstat.uid (char *)
+include/net/9p/9p.h:struct p9_iattr_dotl.uid (u32)
+include/net/9p/client.h:struct p9_fid:uid (uid_t)
+include/net/ax25.h:struct ax25_uid_assoc:uid (uid_t)
+include/net/tcp.h:struct tcp_iter_state.uid (int)
+include/rdma/ib_user_cm.h:struct ib_ucm_create_id.uid (__u64)
+include/rdma/ib_user_cm.h:struct ib_ucm_rep.uid (__u64)
+include/rdma/ib_user_cm.h:struct ib_ucm_event_resp.uid (__u64)
+include/rdma/rdma_user_cm.h:struct rdma_ucm_create_id.uid (__u64)
+include/rdma/rdma_user_cm.h:struct rdma_ucm_accept.uid (__u64)
+include/rdma/rdma_user_cm.h:struct rdma_ucm_join_mcast.uid (__u64)
+include/rdma/rdma_user_cm.h:struct rmda_ucm_event_resp.uid (__u64)
+include/trace/events/ext3.h:struct TRACE_EVENT(ext3_free_inode.uid (uid_t))
+include/trace/events/ext4.h:struct TRACE_EVENT(ext4_free_inode.uid (uid_t))
+
+(There are more in .c and .h files outside of /include!)
+(e.g. fs/squashfs/squashfs_fs.h)
+
+==== list of places that set struct task_struct:struct cred:uid ====
+All assignments to struct_task:struct_cred:uid:
+kernel/sys.c:setreuid() new->uid = kruid;
+kernel/sys.c:setuid() new->suid = new->uid = kuid;
+kernel/sys.c:setresuid() new->uid = kruid;
+kernel/cred.c:prepare_creds() memcpy(new, old, sizeof(struct cred))
+NOT: ipc/util.c: new->cuid  new->uid = euid;
+
+-------------------
+            
+### functions that might be simplified or just disappear
+current_uid() - 
+current_uid_gid()
+struct user_struct *find_user(kuid_t);
+struct user_struct *alloc_uid(kuid_t);
+struct user_struct *get_uid(struct user_struct *u)
+void free_uid(struct user_struct *)
+
+current_uid() - references: 40
+current_uid_gid()
+
+sys_getuid16()
+
+### stuff that should evaporate 
+all locking and rcu around uid (cred)
+	cred_guard_mutex()
+
+### interesting macros
+SYSCALL_DEFINE
+
+### data dependencies
+Data dependencies (found manually) on uid:
+#1: kernel/auditsc.c:__audit_signal_info():uid_t uid;
+
+Data dependencies on #1:
+kernel/audit.c:uid_t audit_sig_uid - global
+  # assigned by compiler to -1 in kernel/audit.c
+  # assigned in kernel/auditsc.c:__audit_signal_info() to either tsk->loginuid or uid
+	(from current_uid())
+auditsc.o controlled by CONFIG_AUDITSYSCALL
+
+### size/scope of problem
+"cgrep uid | wc" yeilds about 10,000 references to uid in the kernel.
+This includes comments, function names, structure elements, and more.
+
+There are 46 references to uid with "cred" on the same line.
+
+### exhaustive search for task->cred->uid
+** need references to uid, but do I also need references to cred? **
+
+The following searches are done by grepping the source code.
+
+1) 'cred->uid' - 78 references (cgrep "cred->uid")
+   ->cred->uid  - 4, 2 in s390, 1 in tomoyo, 1 in fs/exec.c
+   bprm->cred - struct linux_binprm->cred (see binfmt.h)
+fs/binfmt_elf.c SET_UID... (not likely)
+net/core/sock.c: ucred->uid = ucred->gid = -1;
+net/core/scm.c: ucred->uid = cred->euid = p->creds.uid;
+net/sunrpc/auth_generic.c gcred->acred.uid = acred->uid
+
+2) current_cred()->uid
+*NOT __task_cred(task)->uid (this uses real_cred, not cred)
+appears to only be used in security/integrity/ima/ima_audit.c (not assigned)
+
+3) get_current_cred()->uid
+4) current_cred_xxx(uid) - no direct references
+5) current_uid() - cred.h
+6) current_uid_gid() - cred.h
+
+7) kernel/cred.c:prepare_creds()
+**	memcpy(new, task->cred, sizeof(struct cred))
+NOT	get_uid(new->user) does atomic_inc(new->user->__count)
+
+8) others (guessed and researched)
+kernel/sys.c:setreuid() new->uid = kruid;
+kernel/sys.c:setuid() new->suid = new->uid = kuid;
+
+
+=== places where <task_struct>.cred is manipulated ===
+kernel/cred.c:prepare_creds() memcpy(new, old, sizeof(struct cred))
+kernel/cred.c:commit_creds() - rcu_assign_pointer(task->cred, new)
+kernel/cred.c:override_creds() rcu_assign_pointer(current->cred, new)
+kernel/cred.c:revert_creds() rcu_assign_pointer(current->cred, old)
+
+===============
+method of finding and replacing struct cred->uid references
+
+ * remove field from structure (cred.h)
+ * rewrite macros that reference the field (cred.h)
+ * find references with compiler errors:
+"""   CC      kernel/ptrace.o
+/a/home/tbird/work/auto-reduce/linux/kernel/ptrace.c: In function '__ptrace_may_access':
+/a/home/tbird/work/auto-reduce/linux/kernel/ptrace.c:201: error: 'const struct cred' has no member named 'uid'
+"""
+ * manually change all references, matching a pattern:
+(single ticks are not part of pattern)
+   '(\S)->uid'   => '/*\1->uid*/ 0'
+   '(\S)->uid =' => '/*\1->uid =*/'
+ * check for patterns with false matches (maybe 'another_structure->uid')
+
+lvalues were found in:
+	security/keys/process_keys.c
+	kernel/cred.c
+	net/core/scm.c
+	kernel/sys.c
+ * should write program to wrapper gcc (or insert before pre-processor) to
+   apply a semantic patch based on the above patterns
+   * can I get offset into line of error from gcc, to avoid false matches?
+ 
+
+================================================
+Data flow - finding dependent variables:
+
+Look for any assignment from a cred->uid reference.
+
+Get full reference list:
+ + back out of initial patch
+   - do find-refs with uid (catch macro references also)
+     - automate the manual part of the cred->refs patch
+       - read constraints from file
+
+=== finding variables assigned from cred->uid ===
+This is easier with uid, since assignment to another variable
+is not likely to "mix in" other variables or values.  It is opaque
+as far as Linux is concerned, and so you see lots of equality tests
+and direct assignments, but not formulas or equations.  These are
+more amenable to optimization via constant propagation.
+
+=== multi-constant propagation ===
+constant propagation is a special form of a type of optimization which
+allows a variable which can hold only a single value at runtime to be
+removed at compile time.  This is a special case of a larger class
+of variable constraints, which would be multi-constant propagation.
+
+A single variable might hold one of a small number of values at runtime.
+This might also allow compile-time optimization.  One example of this
+would be an IOCTL number.  If certain numbers are never used by user-space,
+then the case blocks associated with those never-used numbers could
+be eliminated from their respective switch statements.
+
+This would be a new type of constraint, which would require more data
+analysis.  In a way, syscall dead code reduction would be a form of this.

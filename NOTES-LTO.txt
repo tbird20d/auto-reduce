@@ -1,0 +1,378 @@
+NOTES on LTO work.
+
+How to prepare:
+ $ cd ~/work/auto-reduce/sony-yocto
+ $ source poky-denzil-7.0/oe-init-build-env
+
+### to work on kernel
+ $ cd ~/work/auto-reduce/lto-work/linux-misc-andi-kleen
+ $ ttc lto-work-yocto-arm setenv
+ $ make menuconfig (turn LTO on or off)
+   (also, turn additional size or auto-reduce features on or off)
+
+To do:
+ - make a patch suitable for upstreaming
+   - select CONFIG_ARM_ASM_UNIFIED=y
+   + test with CONFIG_ARM_ASM_UNIFIED=y and removed '#ifdef CONFIG_LTO'
+     + result is lots of assembler warning messages:
+       ' conditional infixes are deprecated'
+
+I added the patch to fix a problem with unified assembly compatibility macros.
+
+    
+
+ - construct test environment for whole-system optimization
+   - get reliable build of whole distro, including kernel, rootfs, toolchain, qemu
+     - need to decide target distro scel-danny isn't working
+   - find yocto combination that works
+
+Done:
+ + test LTO kernel with reduced syscall support
+   + measure LTO kernel with and without syscalls
+    + collect /proc/meminfo for lto kernel (before and after find)
+    + collect /proc/meminfo for non-lto kernel 
+    + remove arm syscalls in non-lto kernel
+      - see NOTES-syscall-elimination.txt HOWTO steps
+        - I had to hand-remove arch/arm/kernel/entry-common.o to force a
+		re-build with the new call table
+    + collect /proc/meminfo for non-lto-no-sycalls
+    + turn on lto
+    + collect /proc/meminfo for lto-no-syscalls
+
+ + get LTO kernel working on panda with celinux distro
+
+ + try x86 version of LTO, on qemux86
+
+ + try ARM version of LTO, on qemu
+   + get gcc 4.7.3 yocto toolchain
+   + get manually-built linux kernel to boot into qemuarm
+     + get rootfs image for qemuarm (danny-test1)
+     + get automatically-built kernel for qemuarm (danny-test1)
+     + adjust startqemuarm.sh to use rootfs image and manual (andi-kleen) kernel
+   + try LTO kernel, debug if problems
+     + set LTO kernel configuration
+       + General Setup -> LTO_MENU
+         - LTO_MENU depends on EXPERIMENTAL=y and FUNCTION_TRACER=n and X86=y
+       + reduce kernel configuration
+     + get binutils v2.22.51.0.1 (or later)
+       - gnu mirror goes to binutils-2.23.1 (November 2012)
+       - kernel binutils goes to binutils-2.23.51.0.8 (Dec 2012)
+current> - create binutils-2.23.51.0.8 package for sony-yocto
+     + compile
+     + run
+Debug LTO problems
+   + ittt (and friends) macro redefinition
+vmlinux.o.ltrans0.s:4117: Error: Macro `ittt' was already defined
+     
+It requires a gcc 4.7 compiler.  It also requires the kernel binutils- ???
+
+I tried to get the Linaro gcc 4.7 toochain and install it by
+hand, but it didn't work. (I don't recall what didn't work).
+
+== Sony-yocto ==
+Next - try to build my own gcc 4.7 compiler with Sony-yocto.
+ - I found the Sony celinux yocto tree at:
+nserv:/export/git/dist/yocto/poky-denzil-7_0.git
+The sony materials are in layer: meta-scel
+ - I checked it out with:
+git clone git+ssh://nserv.sm.sony.co.jp/export/git/dist/yocto/poky-denzil-7_0.git
+
+This work is inside work/auto-reduce/sony-yocto
+
+(mirror-build) was an attempt to build using only sources from Sony internal
+download mirrors.  It didn't work and I didn't have time to resolve it.
+
+Build problems:
+=== automate fetch ===
+ * I tried building, and had a problem downloading automake.  There was no
+ .bz2 tarfile on the GNU ftp site, for automake_1.11.3.  This recipe had been
+ added by Sony, so I sent a bug report in e-mail, and fixed it by referring
+ to a .gz tarfile, which solved that problem.
+
+=== elfutils fetch ===
+ * I couldn't download elfutils.  The directory changed to include the
+ version number in a dir the path.
+
+=== gcc 4.7.1 fetch (lots of problems) ===
+ * Trying to build again, I had a problem fetching gcc-linaro-4.7.1
+I adjusted the SRC_URI, to match a location where I could get the linaro
+toolchain from, but all kinds of things went wrong, related to version number,
+etc. (I'm still working on this)
+ * the Linaro path in the original SRC_URI doesn't work, but when I switch
+ it to download gcc-linaro-4.7-2012.10, it now doesn't apply patches
+ correctly, due to a differently named top directory.
+
+gcc-runtime is included by conf/distro/include/tcmode-default.inc
+PREFERRED_PROVIDER
+
+== Build results for compiler ==
+After building, the compiler was named:
+i586-sony-linux-gcc, and was located in
+<build-dir>/tmp/sysroots/x86_64-linux/usr/bin/i586-sony-linux
+
+Note: An unprefixed 'gcc' linked to this same program is at:
+<build-dir>/tmp/sysroots/x86_64-linux/usr/libexec/i586-sony-linux/gcc/i586-sony-linux/4.7.2
+
+To use this compiler on a user-space program, you need to reference
+the libraries and headers in:
+<build-dir>/tmp/sysroots/qemux86
+
+=== Building a toolchain installer ===
+You can build a toolchain installer program by typing
+   'bitbake meta-toolchain'.
+When this command completes, the toolchain installer will be in
+tmp/deploy/sdk.
+
+I tried 'bitbake meta-toolchain' in lto-build, and it had problems with the
+compiler.  I noticed that even though the recipe files mentioned 4.7.2,
+the actual compiler sources provided gcc 4.7.3.
+I made gcc-*-4.7.3.* files, and tried again.  This time, I had a problem
+finding package task-sdk-host-nativesdk.  However, the package is located
+in <build_dir>/tmp/deploy/rpms/x86_64-nativesdk. (apparently).
+
+I started trying to build a reference distro, with just the poky distro
+and no SCEL stuff, but it tried to download gcc 4.7.1 from linaro, and failed.
+
+I gave up (for now - on 12/28/12) on installing the toolchains from yocto.
+(But I used the toolchains from yocto, in place, see my  /etc/ttc.conf file)
+
+== LTO issues ==
+I followed the instructions at:
+https://github.com/andikleen/linux-misc/blob/lto-3.6/Documentation/lto-build
+
+This requires downloading and building gcc 4.7 and the kernel version of
+binutils.  Also, it requires downloading the patches from Andi Kleen
+(from github.com/andikleen/linux-misc (branch lto-3.6)
+
+These materials were downloaded, unpacked and built in
+work/auto-reduce/lto-work (see details below).
+
+(I'll have to deal with cross-compilation for ARM later)
+
+Details for setup and compiling with LTO:
+
+ $ wget http://www.kernel.org/pub/linux/devel/binutils/binutils-2.23.51.0.5.tar.gz
+
+I installed binutils-2.23.51.0.5 with:
+ $ tar -xzvf binutils-2.23.51.0.5.tar.gz
+ $ cd binutils-2.23.51.0.5.tar.gz
+ $ ./configure --prefix=/opt/binutils-2.23.51.0.5 --enable-plugins
+ $ nice -n20 make -j8
+ $ sudo make install
+ $ sudo ln -sf /opt/binutils-2.23.51.0.5/bin/ld /usr/local/bin/ld-plugin
+ $ cd ..
+
+My distribution is Ubuntu 12.04.
+Install pre-requisites for the gcc build:
+ (libgmp, libmpfr and mpc-devel)
+ $ sudo apt-get install libgmp-dev
+ $ sudo apt-get install libmpfr-dev
+ $ sudo apt-get install libmpc-dev
+
+Fix multi-libs symlink for gcc build:
+ $ sudo ln -s /usr/lib/x86_64-linux-gnu/ /usr/lib64
+
+NOTE: This was done because of a failed build of ./libgcc_s.so.1.tmp
+/usr/bin/ld: cannot find crti.o: No such file or directory
+From an answer on stack overflow:
+http://stackoverflow.com/questions/6329887/compiling-problems-cannot-find-crt1-o
+
+I installed gcc-4.7.2 with:
+ $ wget http://gcc.petsads.us/releases/gcc-4.7.2/gcc-4.7.2.tar.gz
+ $ tar -xzvf gcc-4.7.2.tar.gz
+ $ mkdir obj-gcc
+ $ cd obj-gcc
+ $ ../gcc-4.7.2/configure --prefix=/opt/gcc-4.7 --enable-lto \
+   --with-plugin-ld=/usr/local/bin/ld-plugin  \
+   --disable-nls --enable-languages=c,c++ \
+   --disable-libstdcxx-pch
+ $ ../gcc-4.7.2/configure --prefix=/opt/gcc-4.7 -enable-lto --with-plugin=ld=/usr/local/bin/ld-plugin --disable-nls --enable-languages=c,c++ --disable-libstdcxx-pch
+ $ nice -n20 make -j8
+ $ sudo ln -sf /opt/gcc-4.7/bin/gcc /usr/local/bin/gcc47
+ $ sudo ln -sf /opt/gcc-4.7/bin/gcc-ar /usr/local/bin/gcc-ar47
+
+I installed the lto tree in linux-lto with:
+ $ git clone git://github.com/andikleen/linux-misc linux-misc-andi-kleen
+ $ cd liux-misc-andi-kleen
+ $ git checkout -b lto-3.7 origin/lto-3.7
+ $ cd ..
+ $ mkdir obj-lto
+ $ cd obj-lto
+
+Copy .config from yocto build directory:
+ $ cp /a/home/tbird/work/yocto/danny-test1/tmp/work/qemux86-poky-linux/linux-yocto-tiny-3.4.11+*/.config .
+ $ make -C ../linux-lto O=$(pwd)  oldconfig
+** (accept defaults for all new values)
+ $ ./source/scripts/config --disable function_tracer \
+ --disable function_graph_tracer \
+ --disable stack_tracer --enable lto_menu \
+ --disable lto_disable --disable lto_debug --disable lto_slim
+
+Put tmp dir on disk:
+ $ mkdir tmp
+ $ export TMPDIR=$(pwd)/tmp
+
+Actual build:
+ $ PATH=/opt/binutils-2.23.51.0.5:$PATH make CC=gcc47 LD=ld-plugin AR=gcc-ar47 -j8
+
+...
+Kernel: arch/x86/boot/bzImage is ready  (#1)
+
+After all that, I ended up using the sony-yocto-scel gcc 4.7.3 gcc from
+
+I ended up using the danny-yocto x86 toolchain for my successful LTO
+kernel build.   The ttc target was: lto-work-yocto-x86
+
+
+== LTO ARM issues ==
+build toolchain for gcc 4.7.3 in yocto-sony-scel build dir (with lto support)
+
+built a toolchain in danny-test1.  Added the toolchain path to 
+ttc target lto-work-yocto-arm target
+
+Also, built a rootfs image in dannytest1 - core-image-minimal
+
+ - Should add qemu invocation to ttc reboot command.
+
+Got testqemuarm.sh working, was missing "-M versatilepb"
+
+Turned on LTO for ARM
+ - removed dependency of CONFIG_LTO_MENU on X86 in init/Kconfig:
+
+diff --git a/init/Kconfig b/init/Kconfig
+index 293daa7..33090d8 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -1125,7 +1125,7 @@ config LTO_MENU
+        bool "Enable gcc link time optimizations"
+        # Only tested on X86 for now. For other architectures you likely
+        # have to fix some things first, like adding asmlinkages etc.
+-       depends on EXPERIMENTAL && X86
++       depends on EXPERIMENTAL
+        # lto does not support excluding flags for specific files
+        # right now. Can be removed if that is fixed.
+        depends on !FUNCTION_TRACER
+
+ERROR: binutils is wrong version!! 2.22 - need 2.27.0.1
+Makefile.lto reported the problem
+
+== binutils conversion to 2.23.51.0.8 ==
+I found that the Sony distro was using binutils 2.22 (gnu), and I need
+to use binutils (linux) 2.23.51.0.8.
+
+I started trying to create my own recipe for binutils 2.23.51.0.8,
+and got part-way through fixing up the patches from the binutils-2.22 recipe.
+That's where I am now (1/15/2013).
+
+binutils recipe =
+  sony-yocto/poky-denzil-7_0/meta/recipes-devtools/binutils_2.23.51.0.8.bb
+binutils patches = "/binutils/*.patch
+
+do
+ $ bitbake -c cleanall binutils-2.23.51.0.8
+ $ bitbake -c patch binutils-2.23.51.0.8
+editing patches and recipe until it works
+
+Patches that need fixing:
+  binutils-poison.patch
+   fixed hunk for file: ld/config.in
+   fixed hunk for file: ld/ldmain.c
+   fixed hunks for file: ld/lexsup.c
+  removed clone-shadow.patch
+  removed <armv5e patch>, <powerpc-e5000 patch>, <PR12698 patch>
+
+working directory:
+sony-yocto/lto-build/tmp/work/armv5te-sony-linux-gnueabi/binutils-2.23.51.0.8-r1/binutils-2.23.51.0.8
+
+
+=== LTO notes ===
+variables used in Makefiles:
+ DISABLE_SLIM_LTO
+ DISABLE_LTO
+ LTO_FLAGS
+
+scripts/Makefile.lto: DISABLE_LTO = -fno-lto
+
+Items that use DISABLE_LTO:
+ - kernel/sys_ni.c		(kernel/Makefile:CFLAGS_sys_ni.o)
+ - arch/x86/vdso/Makefile
+ - lib/raid6/Makefile:altivec_flags
+
+Items that use DISABLE_SLIM_LTO
+ - kernel/timer.c		(kernel/Makefile:CFLAGS_timer.o)
+ - arch/x86/kernel/time.c	(arch/x86/kernel/Makefile:CFLAGS_time.o)
+ - arch/x86/kernel/cpu/common.c
+
+init/Kconfig:
+ LTO_MENU
+   LTO_DISABLE
+   LTO
+   LTO_DEBUG
+   LTO_CP_CLONE
+   LTO_SLIM - currently depends on BROKEN (ie - it's not used)
+
+top level Makefile:
+ put TMPDIR in ${objtree}
+ if LTO_SLIM - use ${CROSS_COMPILE}gcc-ar instead of $(CROSS_COMPILE)ar
+
+in scripts/Makefile.lto
+gcc flags used or referenced:
+  LTO_CFLAGS:
+     -flto
+     -fno-toplevel-reorder
+  LTO_FINAL_CFLAGS:
+     -fuse-linker-plugin
+     -flto=<num_processors)
+     -fno-toplevel-reorder
+   or
+     -fwhole-program
+     -fmem-report
+     -dH
+     -flto-report
+  <SLIM>
+     -fno-fat-lto-objects
+  DISABLE_LTO
+     -fno-lto
+  LTO_DEBUG:
+     -dH - create core dump on error
+     -fdump-ipa-cgraph - dump information on call-graph optimization, unused function removal, and inlining decisions. 
+	foo.cgraph is put in same dest directory as target
+     -fdump-ipa-inline-details - dump information after function inlining
+	foo.inline is put in same dest directory as target
+     -Wl,-plugin-save-temps - pass "-plugin-save-temps" to linker
+	(normally commented out)
+     -save-temps - save temporary files
+        (normally commented out)
+  LTO_CP_CLONE
+     -fipa-cp-clone
+
+Here is the link line using LTO and LTO_DEBUG (with save-temps commented out):
+
++ /bin/bash /a/home/tbird/work/auto-reduce/lto-work/linux-misc-andi-kleen/scripts/gcc-ld -fuse-linker-plugin -flto=8 -fno-toplevel-reorder -flto -fno-toplevel-reorder -fwhole-program -dH -fdump-ipa-cgraph -fdump-ipa-inline-details -g -O2 -fno-strict-aliasing -fno-common -fno-delete-null-pointer-checks -fno-dwarf2-cfi-asm -funwind-tables -fno-stack-protector -fomit-frame-pointer -fno-strict-overflow -fconserve-stack -mabi=aapcs-linux -mno-thumb-interwork -marm -march=armv5te -mtune=arm9tdmi -msoft-float -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -Werror-implicit-function-declaration -Wno-format-security -Wframe-larger-than=1024 -Wno-unused-but-set-variable -Wdeclaration-after-statement -Wno-pointer-sign -r -o vmlinux.o arch/arm/kernel/head.o init/built-in.o --start-group usr/built-in.o arch/arm/vfp/built-in.o arch/arm/kernel/built-in.o arch/arm/mm/built-in.o arch/arm/common/built-in.o arch/arm/net/built-in.o arch/arm/crypto/built-in.o arch/arm/mach-versatile/built-in.o arch/arm/plat-versatile/built-in.o kernel/built-in.o mm/built-in.o fs/built-in.o ipc/built-in.o security/built-in.o crypto/built-in.o block/built-in.o arch/arm/lib/lib.a lib/lib.a arch/arm/lib/built-in.o lib/built-in.o drivers/built-in.o sound/built-in.o firmware/built-in.o net/built-in.o --end-group
+    
+== LTO debugging ==
+vmlinux.o.ltrans0.s:4117: Error: Macro `ittt' was already defined
+
+ittt macro defined in arch/arm/include/asm/unified.h
+ittt macro defined in arch/arm/include/asm/assembler.h
+ittt macro used in arch/arm/kernel/kprobes-test-thumb.h
+
+
+== Results 2013.01.29 ==
+LTO kernel from auto-reduce/lto-work/
+
+* kernel in ~/work/auto-reduce/lto-work/linux-misc-andi-kleen
+* config in ~/work/audot-reduce/lto-work/build/lto-work-yocto-arm/config-works-3.7-rc6-lto
+* qemu start script = lto-work/testqemuarm.sh
+* initrd from ~/work/yocto/danny-test1/tmp/deploy/images/core-image-minimal-qemuarm-20130104010142.rootfs.cpio.gz
+* qemu from ~/work/yocto/danny-test1/tmp/sysroots/x86_64-linux/usr/bin/qemu-system-arm
+* toolchain: ~/work/auto-reduce/sony-yocto/lto-build2/tmp/sysroots/x86_64-linux/usr/bin/armv5te-sony-linux-gnueabi/arm-sony-linux-gnueabi-gcc
+* ttc target = lto-work-yocto-arm
+
+summary:
+  kernel on side in lto-work, from andi kleen repository
+  toolchain from yocto scel lto-build2 with binutils 2.23.51.0.8 and
+	linaro gcc 4.7.3
+  rootfs from yocto poky danny (danny-test1)
+  qemu from yocto poky danny (danny-test1)
+

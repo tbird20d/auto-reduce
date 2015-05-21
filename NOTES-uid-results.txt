@@ -1,0 +1,256 @@
+First results:
+
+== uid0 - size-test1 =
+linux_banner and vermagic increased by 6 bytes (because of "-dirty" being added
+to UTS_RELEASE string.
+
+== uid0 - size-test2 ==
+=== bloat results ===
+add/remove: 0/0 grow/shrink: 1/10 up/down: 12/-308 (-296)
+function                                     old     new   delta
+do_execve                                    944     956     +12
+setup_new_exec                               492     488      -4
+fat_fill_super                              3776    3768      -8
+sys_mq_timedsend                             964     948     -16
+ptrace_do_notify                             132     112     -20
+sys_kill                                     424     396     -28
+do_tkill                                     132     100     -32
+__send_signal                                736     704     -32
+sys_getuid                                    44       8     -36
+loop_set_status                              820     776     -44
+sys_getuid16                                  96       8     -88
+
+=== patch ===
+diff --git a/include/linux/cred.h b/include/linux/cred.h
+index ebbed2c..6b25596 100644
+--- a/include/linux/cred.h
++++ b/include/linux/cred.h
+@@ -342,7 +342,8 @@ static inline void put_cred(const struct cred *_cred)
+        current_cred()->xxx;                    \
+ })
+ 
+-#define current_uid()          (current_cred_xxx(uid))
++//#define current_uid()                (current_cred_xxx(uid))
++#define current_uid()          0
+ #define current_gid()          (current_cred_xxx(gid))
+ #define current_euid()         (current_cred_xxx(euid))
+ #define current_egid()         (current_cred_xxx(egid))
+
+-----------------------------------------------------------------------------
+
+== uid0-allrefs - size-test2 ==
+=== bloat results ===
+add/remove: 0/0 grow/shrink: 8/60 up/down: 57/-2700 (-2643)
+function                                     old     new   delta
+asix_tx_fixup                                356     372     +16
+jffs2_do_read_inode_internal                2556    2568     +12
+do_execve                                    944     956     +12
+join_session_keyring                         304     308      +4
+install_thread_keyring_to_cred                68      72      +4
+install_process_keyring_to_cred              152     156      +4
+dx_probe                                     708     712      +4
+linux_banner                                 161     162      +1
+sys_setfsuid                                 208     204      -4
+static.warned                                 29      25      -4
+set_one_prio                                 192     188      -4
+send_sigurg                                  380     376      -4
+send_sigio                                   488     484      -4
+rsi_parse                                    856     852      -4
+proc_id_connector                            448     444      -4
+keyctl_session_to_parent                     652     648      -4
+init_cred                                    112     108      -4
+do_coredump                                 2696    2692      -4
+prepare_binprm                               296     288      -8
+perf_adjust_period                           880     872      -8
+load_elf_binary                             4720    4712      -8
+key_change_session_keyring                   432     424      -8
+fat_fill_super                              3776    3768      -8
+check_same_owner                             160     152      -8
+__scm_send                                  1056    1048      -8
+sys_shmctl                                  1968    1956     -12
+sys_setuid                                   200     188     -12
+rt_fill_info                                1000     988     -12
+sys_prlimit64                                796     780     -16
+sys_mq_timedsend                             964     948     -16
+sys_getresuid                                136     120     -16
+commit_creds                                 672     656     -16
+__ptrace_may_access                          336     320     -16
+sys_setresuid                                324     304     -20
+ptrace_do_notify                             132     112     -20
+proc_pid_status                             1800    1776     -24
+ipcctl_pre_down                              180     156     -24
+sys_kill                                     424     396     -28
+sys_faccessat                                400     372     -28
+kill_pid_info_as_cred                        356     328     -28
+ipcperms                                     184     156     -28
+sys_quotactl                                2448    2416     -32
+do_tkill                                     132     100     -32
+__send_signal                                736     704     -32
+sys_getuid                                    44       8     -36
+sys_geteuid                                   44       8     -36
+setup_new_exec                               492     456     -36
+loop_set_status                              820     776     -44
+sys_setreuid                                 324     260     -64
+sys_getresuid16                              288     224     -64
+dump_header                                  400     336     -64
+elf_core_dump                               3924    3852     -72
+cap_bprm_secureexec                          128      56     -72
+sys_ioprio_set                               692     616     -76
+do_notify_parent_cldstop                     500     424     -76
+do_notify_parent                             672     596     -76
+sysctl_perm                                  164      76     -88
+sys_getuid16                                  96       8     -88
+sys_geteuid16                                 96       8     -88
+sys_ioprio_get                               668     576     -92
+get_signal_to_deliver                       1492    1396     -96
+set_task_ioprio                              252     152    -100
+cap_task_fix_setuid                          464     352    -112
+sys_setpriority                              696     572    -124
+check_kill_permission                        248     120    -128
+sys_getpriority                              660     528    -132
+cap_bprm_set_creds                          1084     936    -148
+wait_consider_task                          2712    2432    -280
+
+=== patch ===
+(see uid0-allrefs.patch)
+
+== uid0-euid0 - size-test2 ==
+This patch just removes the macros, not the fields, and missed
+the task_uid field()
+
+=== bloat results ===
+add/remove: 0/0 grow/shrink: 1/18 up/down: 12/-640 (-628)
+function                                     old     new   delta
+do_execve                                    944     956     +12
+prepare_binprm                               296     288      -8
+fat_fill_super                              3776    3768      -8
+sys_shmctl                                  1968    1956     -12
+sys_mq_timedsend                             964     948     -16
+setup_new_exec                               492     472     -20
+ptrace_do_notify                             132     112     -20
+ipcctl_pre_down                              180     156     -24
+sys_kill                                     424     396     -28
+ipcperms                                     184     156     -28
+sys_quotactl                                2448    2416     -32
+do_tkill                                     132     100     -32
+__send_signal                                736     704     -32
+sys_getuid                                    44       8     -36
+sys_geteuid                                   44       8     -36
+loop_set_status                              820     776     -44
+sysctl_perm                                  164      76     -88
+sys_getuid16                                  96       8     -88
+sys_geteuid16                                 96       8     -88
+
+== patch ==
+diff --git a/include/linux/cred.h b/include/linux/cred.h
+index ebbed2c..b832b0d 100644
+--- a/include/linux/cred.h
++++ b/include/linux/cred.h
+@@ -342,9 +342,11 @@ static inline void put_cred(const struct cred *_cred)
+        current_cred()->xxx;                    \
+ })
+ 
+-#define current_uid()          (current_cred_xxx(uid))
++//#define current_uid()                (current_cred_xxx(uid))
++#define current_uid()          0
+ #define current_gid()          (current_cred_xxx(gid))
+-#define current_euid()         (current_cred_xxx(euid))
++//#define current_euid()               (current_cred_xxx(euid))
++#define current_euid()         0
+ #define current_egid()         (current_cred_xxx(egid))
+ #define current_suid()         (current_cred_xxx(suid))
+ #define current_sgid()         (current_cred_xxx(sgid))
+
+-----------------------------------------------------------------------------
+
+== all0 - size-test2 ==
+add/remove: 0/0 grow/shrink: 2/48 up/down: 13/-1724 (-1711)
+function                                     old     new   delta
+do_execve                                    944     956     +12
+linux_banner                                 161     162      +1
+request_key_and_link                        1016    1008      -8
+link_path_walk                              2188    2180      -8
+sys_shmctl                                  1968    1956     -12
+ping_init_sock                               288     276     -12
+sys_mq_timedsend                             964     948     -16
+do_coredump                                 2696    2680     -16
+sock_alloc                                   152     132     -20
+ptrace_do_notify                             132     112     -20
+prepare_binprm                               296     276     -20
+fat_setattr                                  896     876     -20
+ext2_new_inode                              2484    2464     -20
+mqueue_get_inode                             564     540     -24
+may_delete                                   300     276     -24
+keyctl_setperm_key                           188     164     -24
+ipcctl_pre_down                              180     156     -24
+inode_owner_or_capable                        56      32     -24
+generic_setlease                             228     204     -24
+generic_permission                           620     596     -24
+ext3_has_free_blocks                         144     120     -24
+can_use_rp                                    96      72     -24
+sys_kill                                     424     396     -28
+ipcperms                                     184     156     -28
+flush_warnings                               392     364     -28
+ext2_new_blocks                             1436    1408     -28
+sys_quotactl                                2448    2416     -32
+shmem_fill_super                             428     396     -32
+inode_init_owner                             108      76     -32
+do_tkill                                     132     100     -32
+anon_inodefs_mount                           288     256     -32
+__send_signal                                736     704     -32
+sys_getuid                                    44       8     -36
+sys_getgid                                    44       8     -36
+sys_geteuid                                   44       8     -36
+sys_getegid                                   44       8     -36
+posix_acl_permission                         472     436     -36
+fat_fill_super                              3776    3740     -36
+ext3_new_inode                              2344    2308     -36
+create_write_pipe                            408     372     -36
+loop_set_status                              820     776     -44
+devpts_pty_new                               436     388     -48
+inode_change_ok                              356     304     -52
+setup_new_exec                               492     416     -76
+jffs2_new_inode                              596     512     -84
+sysctl_perm                                  164      76     -88
+sys_getuid16                                  96       8     -88
+sys_getgid16                                  96       8     -88
+sys_geteuid16                                 96       8     -88
+sys_getegid16                                 96       8     -88
+
+== patch ==
+diff --git a/include/linux/cred.h b/include/linux/cred.h
+index ebbed2c..834000f 100644
+--- a/include/linux/cred.h
++++ b/include/linux/cred.h
+@@ -342,14 +342,22 @@ static inline void put_cred(const struct cred *_cred)
+        current_cred()->xxx;                    \
+ })
+ 
+-#define current_uid()          (current_cred_xxx(uid))
+-#define current_gid()          (current_cred_xxx(gid))
+-#define current_euid()         (current_cred_xxx(euid))
+-#define current_egid()         (current_cred_xxx(egid))
+-#define current_suid()         (current_cred_xxx(suid))
+-#define current_sgid()         (current_cred_xxx(sgid))
+-#define current_fsuid()        (current_cred_xxx(fsuid))
+-#define current_fsgid()        (current_cred_xxx(fsgid))
++//#define current_uid()                (current_cred_xxx(uid))
++#define current_uid()          0
++//#define current_gid()                (current_cred_xxx(gid))
++#define current_gid()          0
++//#define current_euid()               (current_cred_xxx(euid))
++#define current_euid()         0
++//#define current_egid()               (current_cred_xxx(egid))
++#define current_egid()         0
++//#define current_suid()               (current_cred_xxx(suid))
++#define current_suid()         0
++//#define current_sgid()               (current_cred_xxx(sgid))
++#define current_sgid()         0
++//#define current_fsuid()      (current_cred_xxx(fsuid))
++#define current_fsuid()        0
++//#define current_fsgid()      (current_cred_xxx(fsgid))
++#define current_fsgid()        0
+ #define current_cap()          (current_cred_xxx(cap_effective))
+ #define current_user()         (current_cred_xxx(user))
+ #define current_security()     (current_cred_xxx(security))
+

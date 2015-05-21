@@ -1,0 +1,75 @@
+##########################################################
+# constraints.conf
+# 	this file has constraints for Sony's auto-reduce
+#	system (a whole-system optimizer)
+#
+# each constraint is specified in it's own section
+# each section starts with a 'constraint=<name>' line,
+# indicating the name of the constraint
+##########################################################
+constraint=uid0
+type=remove structure member
+#struct_name=cred
+field_name=uid
+#definition=include/linux/cred.h:struct cred:uid
+#definition_line=include/linux/cred.h:126
+def_remove_patch="""diff --git a/include/linux/cred.h b/include/linux/cred.h
+index ebbed2c..c93de48 100644
+--- a/include/linux/cred.h
++++ b/include/linux/cred.h
+@@ -123,7 +123,7 @@ struct cred {
+ #define CRED_MAGIC	0x43736564
+ #define CRED_MAGIC_DEAD	0x44656144
+ #endif
+-	kuid_t		uid;		/* real UID of the task */
++//	kuid_t		uid;		/* real UID of the task */
+ 	kgid_t		gid;		/* real GID of the task */
+ 	kuid_t		suid;		/* saved UID of the task */
+ 	kgid_t		sgid;		/* saved GID of the task */"""
+
+ref_replacement_str=/*%s*/ 0
+
+##########################################################
+constraint=euid0
+type=remove structure member
+#struct_name=cred
+field_name=euid
+#definition=include/linux/cred.h:struct cred:euid
+#definition_line=include/linux/cred.h:130
+def_remove_patch=""" diff--git a/include/linux/cred.h b/include/linux/cred.h
+index ebbed2c..7a07d64 100644
+--- a/include/linux/cred.h
++++ b/include/linux/cred.h
+@@ -127,7 +127,7 @@ struct cred {
+ 	kgid_t		gid;		/* real GID of the task */
+ 	kuid_t		suid;		/* saved UID of the task */
+ 	kgid_t		sgid;		/* saved GID of the task */
+-	kuid_t		euid;		/* effective UID of the task */
++//	kuid_t		euid;		/* effective UID of the task */
+ 	kgid_t		egid;		/* effective GID of the task */
+ 	kuid_t		fsuid;		/* UID for VFS ops */
+ 	kgid_t		fsgid;		/* GID for VFS ops */"""
+diff --git a/fs/fcntl.c b/fs/fcntl.c
+index 81b70e6..98f6d9f 100644
+--- a/fs/fcntl.c
++++ b/fs/fcntl.c
+@@ -208,7 +208,7 @@ static void f_modown(struct file *filp, struct pid *pid, enum pid_type type,
+ 
+ 		if (pid) {
+ 			const struct cred *cred = current_cred();
+-			filp->f_owner.uid = cred->uid;
++			filp->f_owner.uid = 0;
+ 			filp->f_owner.euid = cred->euid;
+ 		}
+ 	}
+@@ -525,8 +525,8 @@ static inline int sigio_perm(struct task_struct *p,
+ 	rcu_read_lock();
+ 	cred = __task_cred(p);
+ 	ret = ((uid_eq(fown->euid, GLOBAL_ROOT_UID) ||
+-		uid_eq(fown->euid, cred->suid) || uid_eq(fown->euid, cred->uid) ||
+-		uid_eq(fown->uid,  cred->suid) || uid_eq(fown->uid,  cred->uid)) &&
++		uid_eq(fown->euid, cred->suid) || uid_eq(fown->euid, 0) ||
++		uid_eq(0,  cred->suid) || uid_eq(0,  0)) &&
+ 	       !security_file_send_sigiotask(p, fown, sig));
+ 	rcu_read_unlock();
+ 	return ret;

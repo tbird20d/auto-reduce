@@ -1,0 +1,196 @@
+#!/usr/bin/python
+#
+# auto-reduce.py program to automatically reduce a Linux embedded system
+# based on a set of system-wide constraints
+#
+# Copyright 2012 Sony Corporation
+
+# todo:
+# 3. examine code base for dependent constraints
+# 4. add constraint to system
+# 5. repeat until no new constraints found
+import sys, os
+import constraint_config
+import find_refs
+import commands
+
+verbose = 0
+
+def usage():
+	global constraint_conf
+
+	print """Usage: auto-reduce.py [options] [<list-of-constraints>]
+Automatically reduce an embedded Linux kernel, by applying constraints.
+This program should be run in the top level directory of the Linux
+source code.
+
+Constraints are read from the file: %s
+
+  -s <name>    Only apply the single named constraint to the system
+  -l           Show available constraints
+""" % constraint_conf
+	sys.exit(0)
+
+def vprint(msg):
+	if verbose:
+		print msg
+
+def read_constraints(config_path):
+	constraints = constraint_config.read_config(config_path)
+	return constraints
+
+def apply_patch(patch_data):
+	global conf_dir
+	print "Applying patch"
+
+	# check if patch is inline or in a file
+	if patch_data.startswith("file:"):
+		patch_file = conf_dir+os.path.sep+patch_data[5:]
+	else:
+		# write patch to temp file
+		fd = open("/tmp/autoreduce.tmp", "w")
+		fd.write(patch_data)
+		fd.close()
+		patch_file = "/tmp/autoreduce.tmp"
+
+	# apply patch
+	cmd = "patch -p1 -i %s" % patch_file
+	rcode = os.system(cmd)
+	return rcode
+
+# perform the operations for the constraint type: 'remove structure member'
+# return 0 on success
+def do_remove_structure_member(cons):
+	# FIXTHIS: try to formulate patch from definition and source analysis?
+
+	# steps:
+	# apply the definition removal patch
+	# patch references to the variable
+	# remove assignments to the variable
+	# notify user of remaining oddities for manual work
+
+	try:
+		remove_patch = cons.def_remove_patch
+	except:
+		print "Error: missing def_remove_patch for constraint '%s'" % cons.name
+		print "and there is no automation for patch creation for this constraint type"
+
+		return -1
+
+	if apply_patch(remove_patch):
+		print "Problem applying patch - cannot continue!"
+		return
+
+	# FIXTHIS - optimization - try to first compile the kernel
+	# with -j 8 to speed up the next step (which include a find_ref)
+	prebuild = 1
+	if prebuild:
+		os.system("make -i -j 8  bzImage")
+
+	# FIXTHIS - do an initial find_refs.py to figure out the situation
+	# check for outstanding issues
+	# by doing a forced find_refs
+	cmd = 'find_refs.py -f %s' % (cons.field_name)
+	print "Executing command: '%s'..." % cmd
+	(rcode, result_str) = commands.getstatusoutput(cmd)
+
+	print "Result of find_refs is:"
+	print "----------------------------------------"
+	print result_str
+	print "----------------------------------------"
+
+	# now, patch all references to the structure reference, with the
+	# requested replacement string
+	try:
+		subst_str = cons.ref_replacement_str
+	except:
+		print "Error: missing ref_replacement_str for constraint '%s'" % cons.name
+
+		return -1
+
+	cmd = 'patch_refs.py %s "%s"' % (cons.field_name, subst_str)
+	print "Executing command: '%s'..." % cmd
+	(rcode, result_str) = commands.getstatusoutput(cmd)
+
+	print "Result of patch_refs is:"
+	print "----------------------------------------"
+	print result_str
+	print "----------------------------------------"
+	
+
+	# check for outstanding issues
+	# by doing a forced find_refs
+	cmd = 'find_refs.py -f %s' % (cons.field_name)
+	print "Executing command: '%s'..." % cmd
+	(rcode, result_str) = commands.getstatusoutput(cmd)
+
+	print "Result of find_refs is:"
+	print "----------------------------------------"
+	print result_str
+	print "----------------------------------------"
+	return rcode
+
+# try to apply the constraint
+# return 0 on success
+def apply_constraint(cons):
+	print("Applying constraint '%s'" % cons.name)
+	#print cons
+
+	# handle different constraint types here
+	if cons.type=="remove structure member":
+		return do_remove_structure_member(cons)
+
+	print "Error: Unknown constraint type: '%s'" % cons.type
+	print "Could not apply constraint '%s'" % cons.name
+	return -1
+
+def main():
+	single_constraint_name = ""
+	show_list = 0
+	if '-h' in sys.argv:
+		usage()
+
+	if '-l' in sys.argv:
+		show_list = 1	
+		sys.argv.remove('-l')
+
+	cons_map = read_constraints(constraint_conf)
+
+	cons_list = cons_map.keys()
+
+	if show_list:
+		print "List of configured constraints:"
+		for name in cons_list:
+			print " ",name
+		sys.exit(0)
+
+	# check that we're in the Kernel source directory
+	if not os.path.isfile("MAINTAINERS"):
+		print "Missing MAINTAINERS file, are we in top-level kernel source directory?"
+		sys.exit(1)
+
+	# if there are more command line items,
+	# they are the constraints to apply
+	del(sys.argv[0])
+	if sys.argv:
+		cons_list = sys.argv[:]
+		
+	for name in cons_list:
+		print "Applying constraint %s" % name
+		try:
+			cons = cons_map[name]
+		except:
+			print "Error: there is not constraint named '%s'" % name
+
+		rcode = apply_constraint(cons)
+		if rcode==0:
+			print "Success!"
+		else:
+			print "Failure."
+
+
+if __name__=="__main__":
+	# constraint configuration file is in this program's home directory
+	conf_dir = os.path.dirname(sys.argv[0])
+	constraint_conf = conf_dir+os.path.sep+"constraints.conf"
+	main()

@@ -1,0 +1,27 @@
+Here are some notes about gcc optimizations:
+
+Can gcc?:
+ - optimize away a test that is always true, based on a local variable
+   - with no -O, no
+   - with -O3, yes
+ - consolidate separate legs of conditionals that are identical?
+   - with no -O, no
+   - with -O3, yes
+ - optimize away a test that is always true, based on an input variable
+   - no
+   - maybe with -flot (need to check)
+ - optimize away externally called code that is not needed due to result
+   never being used
+   - no - compiler can't tell if there are side effects
+ - optimize away internally called code that is not needed
+   - without -flto, no
+   - with -flto - no (local_atoi code still present)
+
+Other optimization projects:
+ WHOPR - google "whole program" optimizer for gcc
+ see http://google-opensource.blogspot.com/2008/11/whopr-scalable-whole-program-optimizer.html
+
+== Optimizations and optimizers
+gcc -flto option causes lots more optimizations
+
+

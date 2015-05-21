@@ -1,0 +1,14 @@
+This repository contains the tools and notes from Tim Bird's
+Linux auto-reduce research.
+
+This was a project conducted while Tim worked for Sony Corporation,
+to research different non-traditional methods for reducing
+the size of the Linux kernel.  A presentation on this research
+was made at LinuxCon Japan in May, 2013.
+
+The presentation can be found online here:
+http://elinux.org/System_Size_Auto-Reduction
+
+Have fun!
+ -- Tim
+

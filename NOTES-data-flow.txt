@@ -1,0 +1,44 @@
+Some notes about data flow:
+
+find_refs.py is used to find references to a variable, but looking at
+compiler errors after the variable has been removed from the source.
+
+
+find-macro-defs.py is used to find a macro definition
+(this is one common way that sub-fields are accessed)
+(inspired by current_uid() and task_uid())
+
+NOTE: it does not work to find #define si_uid	_sifields._kill._uid
+
+auto-reduce.py - processes constraints.conf and automatically reduces
+the the kernel according to the constraints specified.
+
+Right now, the log uses a patch to remove a variable, find-refs to 
+find the resulting places that need patching.  It does not automatically
+replace well-formed references (but it could, at least for most cred->uid
+normal references)
+
+find-assign-from.py - is used to find dependent variables.
+This generates a list that must be laboriously manually evaluated.
+Automatic analysis has not been done yet.
+It is envisioned that the following control flow will occur:
+
+auto-reduce:
+  apply constraint 1 (uid0)
+    remove field
+    find-refs -> constraint 1 places to patch
+    patch-refs # patch those places
+    find-assign-from # find dependent variables on constraint 1 (dep_var_candidates)
+      for each dep_var_candidate:
+	# see if candidate variable is completely dependent
+          # check for other assignments
+	  # enable contraint 1 (uid0)
+          # find-refs for candidate1 (fs_uid) - candidate refs1
+          # disable constraint 1 (uid0)
+	  # find-refs for candidate1 (fs_uid) - candidate refs2
+          # diff crefs1 and crefs2 => anything missing from refs2 is dependent on uid0
+	# find if there are any other assignments, besides the dependent ones
+          # (NOTE: SSA would solve this)
+        if variable is dependent, create a new constraint 1001 fs_uid)
+        repeat until no more constraints are added
+      

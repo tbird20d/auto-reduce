@@ -1,0 +1,19 @@
+Cold code compression was used in the Ghent project.
+
+Arizon, Vancouver paper (2002)
+
+Profile-Guided Code Compression
+See http://ftp.cs.arizona.edu/~debray/Publications/profcompact.pdf
+
+Code Compaction of an Operating System Kernel
+http://www.cs.arizona.edu/~debray/Publications/kernel-compaction.pdf
+ - talks about dead code elimination (eliminating uncalled system calls)
+ - refers to Chanet paper
+
+
+Terms:
+ - profile-guided code layout
+
+
+
+

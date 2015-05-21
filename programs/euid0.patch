@@ -1,0 +1,31 @@
+diff--git a/include/linux/cred.h b/include/linux/cred.h
+index ebbed2c..7a07d64 100644
+--- a/include/linux/cred.h
++++ b/include/linux/cred.h
+@@ -127,7 +127,7 @@ struct cred {
+ 	kgid_t		gid;		/* real GID of the task */
+ 	kuid_t		suid;		/* saved UID of the task */
+ 	kgid_t		sgid;		/* saved GID of the task */
+-	kuid_t		euid;		/* effective UID of the task */
++//	kuid_t		euid;		/* effective UID of the task */
+ 	kgid_t		egid;		/* effective GID of the task */
+ 	kuid_t		fsuid;		/* UID for VFS ops */
+ 	kgid_t		fsgid;		/* GID for VFS ops */
+@@ -334,7 +334,7 @@ static inline void put_cred(const struct cred *_cred)
+ })
+ 
+ #define task_uid(task)		/* (task_cred_xxx((task), uid)) */ 0
+-#define task_euid(task)		(task_cred_xxx((task), euid))
++#define task_euid(task)		/* (task_cred_xxx((task), euid)) */ 0
+ 
+ #define current_cred_xxx(xxx)			\
+ ({						\
+@@ -344,7 +344,7 @@ static inline void put_cred(const struct cred *_cred)
+ 
+ #define current_uid()		/* (current_cred_xxx(uid)) */ 0
+ #define current_gid()		(current_cred_xxx(gid))
+-#define current_euid()		(current_cred_xxx(euid))
++#define current_euid()		/* (current_cred_xxx(euid)) */ 0
+ #define current_egid()		(current_cred_xxx(egid))
+ #define current_suid()		(current_cred_xxx(suid))
+ #define current_sgid()		(current_cred_xxx(sgid))
