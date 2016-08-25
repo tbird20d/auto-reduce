@@ -1,0 +1,49 @@
+From 77c241d12a71d076fa9519562f5aa7a74f71362c Mon Sep 17 00:00:00 2001
+From: Tim Bird <tim.bird@am.sony.com>
+Date: Thu, 11 Apr 2013 11:04:30 -0700
+Subject: [PATCH] ARM LTO - avoid errors on unified assembly macros
+
+When LTO is turned on for the ARM architecture, the macros in
+arch/arm/include/asm/unified.h get included multiple times
+in the global build, causing build errors.  Avoid this by
+turning on CONFIG_ARM_ASM_UNIFIED.  Unfortunately, this causes
+another set of errors from .S files about
+'conditional infixes are deprecated'.  This commit also
+avoids that warning, by turning off in the assembler flags (but
+only when CONFIG_ARM_ASM_UNIFIED=y).
+---
+ arch/arm/Makefile |    5 ++++-
+ init/Kconfig      |    1 +
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/Makefile b/arch/arm/Makefile
+index 5f914fc..ac3f9a8 100644
+--- a/arch/arm/Makefile
++++ b/arch/arm/Makefile
+@@ -110,7 +110,10 @@ ifeq ($(CONFIG_THUMB2_AVOID_R_ARM_THM_JUMP11),y)
+ CFLAGS_MODULE	+=-fno-optimize-sibling-calls
+ endif
+ else
+-CFLAGS_ISA	:=$(call cc-option,-marm,)
++ifeq ($(CONFIG_ARM_ASM_UNIFIED),y)
++AFLAGS_NOWARN	:=$(call as-option,-Wa$(comma)-mno-warn-deprecated,-Wa$(comma)-W)
++endif
++CFLAGS_ISA	:=$(call cc-option,-marm,) $(AFLAGS_NOWARN)
+ AFLAGS_ISA	:=$(CFLAGS_ISA)
+ endif
+ 
+diff --git a/init/Kconfig b/init/Kconfig
+index 33090d8..b586be9 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -1164,6 +1164,7 @@ config LTO_DISABLE
+ config LTO
+ 	bool
+ 	default y
++	select ARM_ASM_UNIFIED
+ 	depends on LTO_MENU && !LTO_DISABLE
+ 
+ config LTO_DEBUG
+-- 
+1.7.9.5
+

@@ -1,0 +1,94 @@
+From d389f851f1e73d162dad95ae28aa90711dfc40a8 Mon Sep 17 00:00:00 2001
+From: Tim Bird <timothy.bird@sonymobile.com>
+Date: Mon, 13 May 2013 16:15:13 -0700
+Subject: [PATCH] Support elimination of unused kernel parameters
+
+---
+ include/linux/init.h | 14 +++++++++++++-
+ init/Kconfig         | 25 +++++++++++++++++++++++++
+ kernel/printk.c      |  2 +-
+ 3 files changed, 39 insertions(+), 2 deletions(-)
+
+diff --git a/include/linux/init.h b/include/linux/init.h
+index a86c1e5..f17b2f3 100644
+--- a/include/linux/init.h
++++ b/include/linux/init.h
+@@ -284,13 +284,25 @@ struct obs_kernel_param {
+ 		__attribute__((aligned((sizeof(long)))))	\
+ 		= { __setup_str_##unique_id, fn, early }
+ 
+-#define __setup(str, fn)					\
++#define __setup_used(str, fn)					\
+ 	__setup_param(str, fn, fn, 0)
+ 
+ /* NOTE: fn is as per module_param, not __setup!  Emits warning if fn
+  * returns non-zero. */
++#define early_param_used(str, fn)					\
++	__setup_param(str, fn, fn, 1)
++
++#ifdef CONFIG_PARAM_USED_ONLY
++#define __setup(str, fn)
++#define early_param(str, fn)
++#else
++/* define all __setups, not just the ones marked used */
++#define __setup(str, fn)					\
++	__setup_param(str, fn, fn, 0)
+ #define early_param(str, fn)					\
+ 	__setup_param(str, fn, fn, 1)
++#endif
++
+ 
+ /* Relies on boot_command_line being set */
+ void __init parse_early_param(void);
+diff --git a/init/Kconfig b/init/Kconfig
+index b586be9..9032040 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -118,6 +118,31 @@ config LOCALVERSION_AUTO
+ 
+ 	  which is done within the script "scripts/setlocalversion".)
+ 
++config PARAM_USED_ONLY
++	bool "Only define a subset of kernel command line parameters"
++	default n
++	help
++	  If you set this option to 'y', then the kernel will omit
++	  the definitions of routines defined using __setup() and
++	  early_param, and only create the definitions for routines
++	  defined using __setup_used() and early_param_used()
++
++	  __setup() and early_param() routines are used to define
++	  the table used for parsing the kernel command line.  If
++	  you know the exact set of kernel arguments that are
++	  possible, you can use this option to disable (at compile
++	  time) most of the other options.  For any arguments you
++	  want preserved (available for use on the kernel command
++	  line), you should change their macro from
++	     __setup("foo=", foo_setup) to __setup_used(...)
++	  or
++	     early_param("bar", bar_setup) to early_param_used(...)
++
++	  Eliminating unused kernel command line parsing routines
++	  should reduce your kernel image size.  In order to achieve
++	  size savings with this, you should have CONFIG_LTO turned
++	  on as well.
++
+ config HAVE_KERNEL_GZIP
+ 	bool
+ 
+diff --git a/kernel/printk.c b/kernel/printk.c
+index 2d607f4..f5336fb 100644
+--- a/kernel/printk.c
++++ b/kernel/printk.c
+@@ -1796,7 +1796,7 @@ static int __init console_setup(char *str)
+ 	console_set_on_cmdline = 1;
+ 	return 1;
+ }
+-__setup("console=", console_setup);
++__setup_used("console=", console_setup);
+ 
+ /**
+  * add_preferred_console - add a device to the list of preferred consoles.
+-- 
+1.7.11.3
+

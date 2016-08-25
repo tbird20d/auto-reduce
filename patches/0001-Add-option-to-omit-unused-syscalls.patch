@@ -1,0 +1,88 @@
+From 15387faa1d250b4dced240bef6d54c87ea8ff686 Mon Sep 17 00:00:00 2001
+From: Tim Bird <tim.bird@am.sony.com>
+Date: Wed, 30 Jan 2013 10:20:18 -0800
+Subject: [PATCH] Add option to omit unused syscalls
+
+---
+ arch/arm/Kconfig               | 26 ++++++++++++++++++++++++++
+ arch/arm/kernel/entry-common.S |  8 ++++++++
+ 2 files changed, 34 insertions(+)
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index ade7e92..328b24e 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -1633,6 +1633,32 @@ config ARCH_NR_GPIO
+ 
+ 	  If unsure, leave the default value.
+ 
++config OMIT_UNUSED_SYSCALLS
++	bool "Omit unused system calls (EXPERIMENTAL)"
++	default n
++	help
++	  By enabling this option, the kernel will be compiled with
++	  an altered system call table.  Any functions marked UNUSED
++	  in arch/arm/kernel/calls.S will be replaced in the syscall table
++	  with a pointer to a stub routine.  The main purpose of this
++	  is to remove references to such syscalls, to allow an
++	  optimization pass which would actually remove the syscall
++	  code from the kernel.  This option should result in a
++	  size reduction in the kernel, when combined with other options
++	  which perform whole-system optimization of the kernel (e.g. LTO).
++	  By itself, this option just omits the syscall table reference
++	  to the function, and does not actively eliminate the code
++	  for each syscall.
++
++	  Use the tools in tools/reduce to generate a list of unused
++	  syscalls, and to automatically mark unused syscall functions.
++	  Or, you can mark the functions manually in arch/arm/kernel/calls.S
++
++	  If no functions have been marked as UNUSED, this option has
++	  no effect.
++
++	  If unsure, say N.
++
+ source kernel/Kconfig.preempt
+ 
+ config HZ
+diff --git a/arch/arm/kernel/entry-common.S b/arch/arm/kernel/entry-common.S
+index 3471175..a38a0fd 100644
+--- a/arch/arm/kernel/entry-common.S
++++ b/arch/arm/kernel/entry-common.S
+@@ -485,12 +485,18 @@ __cr_alignment:
+ #else
+ #define OBSOLETE(syscall) syscall
+ #endif
++#ifdef CONFIG_OMIT_UNUSED_SYSCALLS
++#define UNUSED(syscall) sys_ni_syscall
++#else
++#define UNUSED(syscall) syscall
++#endif
+ 
+ 	.type	sys_call_table, #object
+ ENTRY(sys_call_table)
+ #include "calls.S"
+ #undef ABI
+ #undef OBSOLETE
++#undef UNUSED
+ 
+ /*============================================================================
+  * Special system call wrappers
+@@ -614,12 +620,14 @@ ENDPROC(sys_oabi_readahead)
+  */
+ #define ABI(native, compat) compat
+ #define OBSOLETE(syscall) syscall
++#define UNUSED(syscall) syscall
+ 
+ 	.type	sys_oabi_call_table, #object
+ ENTRY(sys_oabi_call_table)
+ #include "calls.S"
+ #undef ABI
+ #undef OBSOLETE
++#undef UNUSED
+ 
+ #endif
+ 
+-- 
+1.7.11.3
+
