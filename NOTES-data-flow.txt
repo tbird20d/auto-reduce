@@ -1,6 +1,6 @@
 Some notes about data flow:
 
-find_refs.py is used to find references to a variable, but looking at
+find_refs.py is used to find references to a variable, by looking at
 compiler errors after the variable has been removed from the source.
 
 
